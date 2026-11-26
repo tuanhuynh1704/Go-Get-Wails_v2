@@ -1,0 +1,10 @@
+/build/bin/
+/frontend/node_modules/
+/frontend/dist/*
+!/frontend/dist/.gitkeep
+*.test
+*.exe
+*.log
+.DS_Store
+coverage.out
+/frontend/coverage/

@@ -4,7 +4,7 @@ Trình quản lý tải file desktop đa nền tảng. Phần lõi tải viết 
 
 Dự án đồng thời là bài thực hành các mẫu đồng thời của Go (worker pool, channel, context, atomic) và cách nối một backend Go với giao diện web hiện đại qua Wails.
 
-> Trạng thái: **đang ở giai đoạn thiết kế**, chưa có code. Chi tiết kỹ thuật nằm trong [DESIGN.md](DESIGN.md).
+> Trạng thái: **đã hoàn thành nền tảng v0.1 và kiểm chứng trên Windows**. Có giao diện Wails + React, tải nhiều URL bằng worker pool, tiến trình qua event và hủy tác vụ. Tải chia đoạn, tốc độ/ETA và khôi phục thuộc các mốc tiếp theo. Xem [báo cáo tiến độ](reports/PROGRESS.md) và [báo cáo v0.1](reports/01-v0.1.md).
 
 ## Vì sao chọn Wails v2
 
@@ -124,10 +124,10 @@ goget/
 
 **Yêu cầu**
 - Go 1.22 trở lên
-- Node.js 18 trở lên
+- Node.js 22.12 trở lên (đã kiểm chứng với Node 22.14)
 - Wails CLI:
   ```bash
-  go install github.com/wailsapp/wails/v2/cmd/wails@latest
+  go install github.com/wailsapp/wails/v2/cmd/wails@v2.12.0
   wails doctor      # kiểm tra môi trường còn thiếu gì
   ```
 - Theo nền tảng:
@@ -135,10 +135,12 @@ goget/
   - **macOS:** Xcode Command Line Tools (`xcode-select --install`)
   - **Linux:** `gcc`, `libgtk-3-dev`, `libwebkit2gtk-4.0-dev` (hoặc `4.1` trên Ubuntu 24.04, xem mục Đóng gói)
 
-**Khởi tạo và chạy chế độ phát triển**
+**Chạy mã nguồn hiện có**
 ```bash
-wails init -n goget -t react-ts
-cd goget
+cd frontend
+npm ci
+cd ..
+wails generate module
 wails dev          # hot reload cho cả Go lẫn frontend
 ```
 Trong `wails dev`, frontend cũng truy cập được tại `http://localhost:34115` bằng trình duyệt thường (tiện cho DevTools và kiểm thử giao diện).
@@ -153,14 +155,16 @@ wails build -tags webkit2_41             # Linux dùng webkit2gtk 4.1 (Ubuntu 24
 
 ## Cách sử dụng
 
-1. Mở app, bấm **Thêm URL** và dán các link (mỗi dòng một link), hoặc chỉ cần copy link để app gợi ý tải
-2. Chọn thư mục lưu và số đoạn nếu muốn, bấm **Tải**
-3. Theo dõi tiến trình, tốc độ, ETA; dùng **Tạm dừng / Tiếp tục / Hủy** khi cần
-4. File hoàn tất nằm trong thư mục đã chọn; bấm "Mở thư mục" để tới nơi lưu
+1. Mở app, bấm **Thêm URL** hoặc `Ctrl/Cmd+N`, dán tối đa 100 URL HTTP(S), mỗi dòng một link.
+2. Dùng thư mục mặc định `~/Downloads/GoGet` hoặc chọn thư mục qua hộp thoại hệ thống; bấm **Bắt đầu tải**.
+3. Theo dõi tiến trình, dung lượng và trạng thái; dùng nút hủy của từng file hoặc **Hủy tất cả**. Mặc định tối đa 3 file chạy đồng thời.
+4. File hoàn tất được lưu trong thư mục đã chọn; tên trùng được thêm hậu tố. File tạm `.goget` chỉ trở thành file đích khi đã tải đủ và đồng bộ đĩa.
+
+v0.1 chưa lưu hàng đợi hoặc khôi phục sau khi đóng app. Hủy và thoát sẽ xóa phần tải dở; file hoàn tất được giữ lại. Tốc độ, ETA, chia đoạn, clipboard, tạm dừng/tiếp tục và mở thư mục từ UI chưa được cung cấp ở mốc này. Chạy `npm run dev` trực tiếp chỉ phục vụ frontend; cần `wails dev` hoặc binary desktop để có backend thật.
 
 ## Lộ trình phát triển
 
-- [ ] v0.1: khung Wails + React, worker pool, tiến trình qua event, hủy tác vụ
+- [x] v0.1: khung Wails + React, worker pool, tiến trình qua event, hủy tác vụ
 - [ ] v0.2: tải chia đoạn, tốc độ và ETA, hiển thị từng đoạn
 - [ ] v0.3: tạm dừng/tiếp tục, lưu trạng thái SQLite, retry
 - [ ] v0.4: clipboard, hẹn giờ, giới hạn tốc độ, kéo thả, cài đặt, theme, i18n
@@ -172,8 +176,19 @@ wails build -tags webkit2_41             # Linux dùng webkit2gtk 4.1 (Ubuntu 24
 ```bash
 go test ./...
 go test -race ./...           # bắt buộc trước khi merge
-cd frontend && npm test       # Vitest + Testing Library
+go vet ./...
+go run honnef.co/go/tools/cmd/staticcheck@v0.6.1 ./...
+wails generate module
+cd frontend
+npm ci
+npm run lint
+npm test                      # Vitest + Testing Library
+npm run build
 ```
+
+Trên Windows, `go test -race` cần `CGO_ENABLED=1` và compiler GCC tương thích trong `PATH`; build Wails thông thường không cần bật CGO. CI chạy kiểm thử và build trên Windows/macOS/Ubuntu, cùng một job kiểm tra Go tối thiểu 1.22.12. Kết quả CI được báo riêng với kết quả chạy tại máy.
+
+Hai bài kiểm tra trình duyệt tùy chọn nằm ở `frontend/scripts/browser-smoke.cjs` (bridge giả, 500 tác vụ, responsive và bàn phím) và `frontend/scripts/wails-smoke.cjs` (backend Go thật qua `wails dev`). Dùng Playwright/trình duyệt đã có sẵn; có thể đặt `GOGET_PLAYWRIGHT_MODULE` và `GOGET_BROWSER_EXECUTABLE`, không bắt buộc thêm dependency vào dự án. Chạy `node scripts/wails-smoke.cjs` từ `frontend` sau khi mở một phiên `wails dev` không có tác vụ đang hoạt động; script tự tạo máy chủ HTTP thử, xác nhận checksum/hủy/lỗi/quyền thư mục và xóa các file thử do nó tạo.
 
 Gợi ý: dùng `httptest.NewServer` giả lập máy chủ có và không hỗ trợ `Range`, kiểm tra SHA-256 file tải về khớp bản gốc trong mọi kịch bản (hủy giữa chừng, tạm dừng, tắt app giả lập).
 

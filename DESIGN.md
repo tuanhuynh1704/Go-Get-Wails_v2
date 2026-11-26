@@ -2,7 +2,7 @@
 
 GoGet là trình quản lý tải file kiểu IDM. Lõi tải viết bằng Go, giao diện viết bằng React + TypeScript, ghép lại bằng **Wails v2**. README.md cho cái nhìn tổng quan; tài liệu này đi sâu vào kiến trúc, giao tiếp Go ↔ frontend, thuật toán tải, đồng thời, lưu trữ, giao diện, đóng gói, kiểm thử và lộ trình.
 
-> Đây là bản thiết kế ban đầu, chưa có code. Hãy coi nó là bản nháp: các phần chắc chắn là kiến trúc, mô hình dữ liệu, thuật toán tải và hợp đồng Go ↔ frontend. Phần giao diện chi tiết và các tính năng muộn (extension, tray) sẽ đổi khi làm thật.
+> Đây là thiết kế tổng thể và lộ trình. Nền tảng v0.1 đã có mã nguồn; các phần chia đoạn, lưu trữ, khôi phục và tiện ích vẫn là thiết kế cho mốc sau. Phạm vi đã kiểm chứng và khác biệt triển khai được ghi tại `reports/`; không coi các mẫu mã trong tài liệu là tính năng đã hoàn thành.
 
 ---
 
@@ -943,12 +943,12 @@ Ghi chú: bộ đệm 64 KiB mỗi đoạn cân bằng giữa số syscall và R
 ## 24. Lộ trình triển khai chi tiết
 
 ### v0.1 Nền tảng
-- [ ] `wails init -t react-ts`, dọn template, cấu trúc thư mục theo mục 3.3
-- [ ] `Manager`, `jobs`, worker pool, `events` (lõi chưa phụ thuộc Wails)
-- [ ] Tải một luồng cơ bản, hủy bằng `context`
-- [ ] `app.go`: `AddURLs`, `ListTasks`, `Cancel`
-- [ ] Emitter và event `task:*`, `tasks:progress`
-- [ ] Frontend: store, `useWailsEvents`, `TaskList`, `TaskRow`, `AddDialog` tối giản
+- [x] Khung Wails + React/TypeScript, dọn template, cấu trúc thư mục theo mục 3.3
+- [x] `Manager`, hàng đợi, worker pool, `events` (lõi không phụ thuộc Wails)
+- [x] Tải một luồng cơ bản, hủy bằng `context`
+- [x] `app.go`: `AddURLs`, `ListTasks`, `Cancel`, `CancelAll`
+- [x] Emitter và event `task:added`, `task:status`, `tasks:progress`, `stats:update`
+- [x] Frontend: store, `useWailsEvents`, `TaskList`, `TaskRow`, `AddDialog`
 
 ### v0.2 Tải chia đoạn
 - [ ] `probe.go`: HEAD, fallback `Range: bytes=0-0`, tên file
