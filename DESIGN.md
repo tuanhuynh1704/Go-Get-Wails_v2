@@ -4,7 +4,7 @@ GoGet là trình quản lý tải file kiểu IDM. Lõi tải viết bằng Go, 
 
 > Đây là thiết kế tổng thể và lộ trình. Nền tảng v0.1 và tải chia đoạn v0.2 đã có mã nguồn; lưu trữ, khôi phục và tiện ích vẫn là thiết kế cho mốc sau. Phạm vi đã kiểm chứng và khác biệt triển khai được ghi tại `reports/`; không coi các mẫu mã trong tài liệu là tính năng đã hoàn thành.
 
-Mốc **v0.2 đã triển khai tải chia đoạn, Speed/ETA, SegmentBar và `GetTaskDetail`**, kiểm chứng tại máy Windows theo [báo cáo v0.2](reports/02-v0.2.md). Số đoạn tối đa mặc định 8, chọn 1-32; chỉ tải song song khi xác nhận 206 và validator phù hợp. Thiếu validator mạnh hoặc máy chủ bỏ qua Range thì dùng một luồng; Last-Modified chỉ được dùng khi không có ETag và Date mới hơn ít nhất 60 giây. Resume, retry và lưu trạng thái vẫn thuộc các mốc sau.
+Mốc **v0.2 đã triển khai tải chia đoạn, Speed/ETA, SegmentBar và `GetTaskDetail`**, tích hợp vào `master` sau kiểm chứng tại máy Windows và [CI `33f2985`](https://github.com/tuanhuynh1704/Go-Get-Wails_v2/actions/runs/45830725940) đạt Windows/macOS/Linux cùng Go 1.22.12; chi tiết tại [báo cáo v0.2](reports/02-v0.2.md). Số đoạn tối đa mặc định 8, chọn 1-32; chỉ tải song song khi xác nhận 206 và validator phù hợp. Thiếu validator mạnh hoặc máy chủ bỏ qua Range thì dùng một luồng; Last-Modified chỉ được dùng khi không có ETag và Date mới hơn ít nhất 60 giây. Resume, retry và lưu trạng thái vẫn thuộc các mốc sau.
 
 ---
 

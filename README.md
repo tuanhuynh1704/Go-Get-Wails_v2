@@ -4,7 +4,7 @@ Trình quản lý tải file desktop đa nền tảng. Phần lõi tải viết 
 
 Dự án đồng thời là bài thực hành các mẫu đồng thời của Go (worker pool, channel, context, atomic) và cách nối một backend Go với giao diện web hiện đại qua Wails.
 
-> Trạng thái: **đã triển khai v0.2 và kiểm chứng trên Windows, gồm tải chia đoạn, tốc độ/ETA và chi tiết từng đoạn**. Go race/goleak, Go tối thiểu 1.22.12, frontend và E2E backend Wails thật đã đạt; CI v0.2 sẽ được ghi riêng sau push. Nền v0.1 đã có CI Windows/macOS/Linux đạt. Xem [báo cáo tiến độ](reports/PROGRESS.md), [báo cáo v0.1](reports/01-v0.1.md) và [báo cáo v0.2](reports/02-v0.2.md).
+> Trạng thái: **v0.2 đã tích hợp vào `master`, gồm tải chia đoạn, tốc độ/ETA và chi tiết từng đoạn**. Go race/goleak, Go tối thiểu 1.22.12, frontend và E2E backend Wails thật đã đạt tại máy Windows. [CI v0.2 tại `33f2985`](https://github.com/tuanhuynh1704/Go-Get-Wails_v2/actions/runs/45830725940) đạt đủ bốn job và tạo ba artifact Windows/macOS/Linux. Xem [báo cáo tiến độ](reports/PROGRESS.md), [báo cáo v0.1](reports/01-v0.1.md) và [báo cáo v0.2](reports/02-v0.2.md).
 
 ## Vì sao chọn Wails v2
 
@@ -167,7 +167,7 @@ Số đoạn là giới hạn tối đa cho mỗi file; đoạn có kích thư�
 ## Lộ trình phát triển
 
 - [x] v0.1: khung Wails + React, worker pool, tiến trình qua event, hủy tác vụ
-- [x] v0.2: tải chia đoạn, tốc độ và ETA, hiển thị từng đoạn; kiểm chứng Windows, CI ghi riêng sau push
+- [x] v0.2: tải chia đoạn, tốc độ và ETA, hiển thị từng đoạn; kiểm chứng Windows, CI Windows/macOS/Linux và Go 1.22.12 đạt, đã tích hợp `master`
 - [ ] v0.3: tạm dừng/tiếp tục, lưu trạng thái SQLite, retry
 - [ ] v0.4: clipboard, hẹn giờ, giới hạn tốc độ, kéo thả, cài đặt, theme, i18n
 - [ ] v0.5: HTTP server cục bộ và extension trình duyệt
