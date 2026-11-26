@@ -13,7 +13,7 @@ vi.mock('./lib/api', () => ({ api: {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  useTaskStore.setState({ tasks: {}, order: [], filterIDs: { all: [], downloading: [], completed: [], failed: [] }, stats: emptyStats, settings: null, connection: 'connecting', connectionError: null });
+  useTaskStore.setState(useTaskStore.getInitialState(), true);
   vi.mocked(api.listTasks).mockResolvedValue({ tasks: [], stats: emptyStats });
   vi.mocked(api.getSettings).mockResolvedValue(settings);
   vi.mocked(api.subscribe).mockReturnValue(vi.fn());
@@ -94,7 +94,7 @@ describe('GoGet application', () => {
 
   it('renders safe long filenames, unknown totals and terminal error details', async () => {
     const fileName = '<img src=x onerror=alert(1)>' + 'tài-liệu-'.repeat(30) + '.zip';
-    await renderReady({ tasks: [makeTask({ fileName, total: -1 }), makeTask({ id: 'failed', status: 'failed', error: 'Máy chủ trả về 404', createdAt: 101 })], stats: { active: 1, queued: 0, globalSpeed: 0 } });
+    await renderReady({ tasks: [makeTask({ fileName, category: 'archive', total: -1 }), makeTask({ id: 'failed', status: 'failed', error: 'Máy chủ trả về 404', createdAt: 101 })], stats: { active: 1, queued: 0, globalSpeed: 0 } });
     expect(screen.getByRole('heading', { name: fileName })).toHaveAttribute('title', fileName);
     expect(document.querySelector('img')).toBeNull();
     const progress = screen.getByRole('progressbar', { name: `Tiến trình ${fileName}` });
@@ -132,7 +132,7 @@ describe('GoGet application', () => {
     const user = userEvent.setup();
     const stop = vi.fn();
     vi.mocked(api.subscribe).mockReturnValue(stop);
-    const { unmount } = await renderReady({ tasks: [makeTask(), makeTask({ id: 'complete', fileName: 'xong.zip', status: 'completed', done: 100 }), makeTask({ id: 'failed', fileName: 'loi.zip', status: 'failed' })], stats: emptyStats });
+    const { unmount } = await renderReady({ tasks: [makeTask(), makeTask({ id: 'complete', fileName: 'xong.zip', category: 'archive', status: 'completed', done: 100 }), makeTask({ id: 'failed', fileName: 'loi.zip', category: 'archive', status: 'failed' })], stats: emptyStats });
     await user.click(screen.getByRole('button', { name: /^Hoàn tất/ }));
     expect(screen.getByRole('heading', { name: 'xong.zip' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'loi.zip' })).not.toBeInTheDocument();
@@ -142,5 +142,69 @@ describe('GoGet application', () => {
     expect(screen.getByRole('heading', { name: 'tài-liệu.pdf' })).toBeInTheDocument();
     unmount();
     expect(stop).toHaveBeenCalledOnce();
+  });
+  it('filters every category across statuses and updates sidebar counts after a same-status correction', async () => {
+    const user = userEvent.setup();
+    const playing = makeTask({ fileName: 'đang-tải.mkv', category: 'video', createdAt: 200 });
+    await renderReady({ tasks: [
+      playing,
+      makeTask({ id: 'complete', fileName: 'xong.mp4', category: 'video', status: 'completed', done: 100 }),
+      makeTask({ id: 'failed', fileName: 'lỗi.webm', category: 'video', status: 'failed' }),
+      makeTask({ id: 'canceled', fileName: 'đã-hủy.mov', category: 'video', status: 'canceled' }),
+      makeTask({ id: 'song', fileName: 'bài-hát.flac', category: 'music', status: 'queued' }),
+      makeTask({ id: 'document', fileName: 'báo-cáo.pdf', category: 'doc', status: 'probing' }),
+      makeTask({ id: 'archive', fileName: 'tệp-nén.7z', category: 'archive', status: 'completed', done: 100 }),
+      makeTask({ id: 'other', fileName: 'dữ-liệu.bin', category: 'other', status: 'canceled' }),
+    ], stats: emptyStats });
+    const statusNav = screen.getByRole('navigation', { name: 'Lọc tác vụ' });
+    const categoryNav = screen.getByRole('navigation', { name: 'Lọc theo loại tệp' });
+    const groups = [
+      ['Video', ['đang-tải.mkv', 'xong.mp4', 'lỗi.webm', 'đã-hủy.mov']],
+      ['Nhạc', ['bài-hát.flac']], ['Tài liệu', ['báo-cáo.pdf']],
+      ['File nén', ['tệp-nén.7z']], ['Khác', ['dữ-liệu.bin']],
+    ] as const;
+    for (const [label, files] of groups) {
+      const button = within(categoryNav).getByRole('button', { name: new RegExp(`^${label}`) });
+      expect(within(button).getByText(String(files.length))).toBeInTheDocument();
+      await user.click(button);
+      expect(button).toHaveAttribute('aria-current', 'page');
+      expect(within(statusNav).queryByRole('button', { current: 'page' })).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: label, level: 2 })).toBeInTheDocument();
+      expect(screen.getAllByRole('article').map((row) => within(row).getByRole('heading').textContent)).toEqual(files);
+    }
+    const video = within(categoryNav).getByRole('button', { name: /^Video/ });
+    await user.click(video);
+    const onEvent = vi.mocked(api.subscribe).mock.calls[0][0];
+    act(() => onEvent({ type: 'task:status', task: { ...playing, fileName: 'tên-được-chọn.mp3', category: 'music' } }));
+    expect(screen.queryByRole('article', { name: 'đang-tải.mkv' })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('article')).toHaveLength(3);
+    expect(within(video).getByText('3')).toBeInTheDocument();
+    const music = within(categoryNav).getByRole('button', { name: /^Nhạc/ });
+    expect(within(music).getByText('2')).toBeInTheDocument();
+    expect(within(within(statusNav).getByRole('button', { name: /^Tất cả/ })).getByText('8')).toBeInTheDocument();
+    expect(within(within(statusNav).getByRole('button', { name: /^Đang tải/ })).getByText('3')).toBeInTheDocument();
+    expect(within(within(statusNav).getByRole('button', { name: /^Hoàn tất/ })).getByText('2')).toBeInTheDocument();
+    expect(within(within(statusNav).getByRole('button', { name: /^Thất bại/ })).getByText('1')).toBeInTheDocument();
+    await user.click(music);
+    expect(screen.getByRole('article', { name: 'tên-được-chọn.mp3' })).toBeInTheDocument();
+    expect(screen.getByRole('article', { name: 'bài-hát.flac' })).toBeInTheDocument();
+    await user.click(within(statusNav).getByRole('button', { name: /^Đang tải/ }));
+    expect(screen.getAllByRole('article')).toHaveLength(3);
+    expect(within(categoryNav).queryByRole('button', { current: 'page' })).not.toBeInTheDocument();
+  });
+  it.each([
+    ['Video', 'Chưa có video.'], ['Nhạc', 'Chưa có tệp nhạc.'], ['Tài liệu', 'Chưa có tài liệu.'],
+    ['File nén', 'Chưa có file nén.'], ['Khác', 'Chưa có tệp khác.'],
+  ])('shows the %s empty state and keeps adding available', async (label, title) => {
+    const user = userEvent.setup();
+    await renderReady();
+    const nav = screen.getByRole('navigation', { name: 'Lọc theo loại tệp' });
+    const button = within(nav).getByRole('button', { name: new RegExp(`^${label}`) });
+    await user.click(button);
+    expect(within(button).getByText('0')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: title })).toBeInTheDocument();
+    expect(screen.getByText(/ở mọi trạng thái tải/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Thêm URL mới' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });

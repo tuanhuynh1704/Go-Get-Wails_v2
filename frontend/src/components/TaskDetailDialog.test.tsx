@@ -20,7 +20,7 @@ function deferred<T>() {
 }
 beforeEach(() => {
   vi.resetAllMocks();
-  useTaskStore.getState().loadSnapshot({ tasks: [makeTask(), makeTask({ id: 'second', fileName: 'thứ-hai.zip' })], stats: emptyStats }, settings, []);
+  useTaskStore.getState().loadSnapshot({ tasks: [makeTask(), makeTask({ id: 'second', fileName: 'thứ-hai.zip', category: 'archive' })], stats: emptyStats }, settings, []);
   vi.mocked(api.getTaskDetail).mockResolvedValue(detail());
 });
 

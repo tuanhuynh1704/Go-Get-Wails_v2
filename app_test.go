@@ -195,7 +195,7 @@ func TestAppBridgeDownloadsAndEmitsCompletedFile(t *testing.T) {
 	a := testApp(t)
 	payload := []byte(strings.Repeat("GoGet bridge integrity\n", 8192))
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Disposition", `attachment; filename="bridge.bin"`)
+		w.Header().Set("Content-Disposition", `attachment; filename="bridge.PDF"`)
 		_, _ = w.Write(payload)
 	}))
 	defer server.Close()
@@ -217,7 +217,7 @@ func TestAppBridgeDownloadsAndEmitsCompletedFile(t *testing.T) {
 		em.run(emCtx, a.mgr.Events())
 	}()
 	t.Cleanup(func() { stop(); <-emDone })
-	result, err := a.AddURLs(dto.AddRequest{URLs: []string{" \t" + server.URL + "/original.bin \n"}})
+	result, err := a.AddURLs(dto.AddRequest{URLs: []string{" \t" + server.URL + "/original.mp3 \n"}})
 	if err != nil || len(result.IDs) != 1 || len(result.Errors) != 0 {
 		t.Fatalf("add URLs = %+v, %v", result, err)
 	}
@@ -232,6 +232,9 @@ func TestAppBridgeDownloadsAndEmitsCompletedFile(t *testing.T) {
 			}
 			if event.name == "task:added" {
 				added = true
+				if event.task.Category != "music" {
+					t.Fatalf("initial URL filename category = %q, want music", event.task.Category)
+				}
 			}
 			if event.task.Status == "failed" {
 				t.Fatalf("bridge download failed: %s", event.task.Error)
@@ -239,8 +242,16 @@ func TestAppBridgeDownloadsAndEmitsCompletedFile(t *testing.T) {
 			if event.task.Status != "completed" {
 				continue
 			}
-			if !added || event.task.Done != int64(len(payload)) || event.task.FileName != "bridge.bin" {
+			if !added || event.task.Done != int64(len(payload)) || event.task.FileName != "bridge.PDF" || event.task.Category != "doc" {
 				t.Fatalf("unexpected completed event: %+v; added=%v", event, added)
+			}
+			snapshot, err := a.ListTasks()
+			if err != nil || len(snapshot.Tasks) != 1 || snapshot.Tasks[0].Category != "doc" {
+				t.Fatalf("snapshot lost corrected file category: %+v, %v", snapshot, err)
+			}
+			detail, err := a.GetTaskDetail(event.task.ID)
+			if err != nil || detail.Task.Category != "doc" || detail.Task.FileName != event.task.FileName {
+				t.Fatalf("detail disagrees with completed file: %+v, %v", detail, err)
 			}
 			got, err := os.ReadFile(filepath.Join(a.settings.DownloadDir, event.task.FileName))
 			if err != nil || sha256.Sum256(got) != sha256.Sum256(payload) {

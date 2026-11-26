@@ -10,6 +10,11 @@ const emptyCopy: Record<Filter, { title: string; detail: string }> = {
   downloading: { title: 'Hàng đợi đang thảnh thơi.', detail: 'Không có tệp nào đang tải hoặc chờ tải. Sẵn sàng cho đường dẫn tiếp theo.' },
   completed: { title: 'Những tệp hoàn tất sẽ ở đây.', detail: 'Khi tải xong, GoGet sẽ tự cập nhật trạng thái cho bạn.' },
   failed: { title: 'Không có tác vụ thất bại.', detail: 'Nếu một lượt tải gặp lỗi, thông tin chi tiết sẽ xuất hiện tại đây.' },
+  video: { title: 'Chưa có video.', detail: 'Các tệp video sẽ xuất hiện tại đây, ở mọi trạng thái tải.' },
+  music: { title: 'Chưa có tệp nhạc.', detail: 'Các tệp nhạc sẽ xuất hiện tại đây, ở mọi trạng thái tải.' },
+  doc: { title: 'Chưa có tài liệu.', detail: 'Các tài liệu sẽ xuất hiện tại đây, ở mọi trạng thái tải.' },
+  archive: { title: 'Chưa có file nén.', detail: 'Các file nén sẽ xuất hiện tại đây, ở mọi trạng thái tải.' },
+  other: { title: 'Chưa có tệp khác.', detail: 'Các tệp thuộc loại khác sẽ xuất hiện tại đây, ở mọi trạng thái tải.' },
 };
 
 function EmptyIllustration() {

@@ -38,6 +38,36 @@ describe('generated bridge adapter', () => {
     native.GetTaskDetail.mockResolvedValueOnce({ task: makeTask({ id: 'wrong' }), segments: [] });
     await expect(api.getTaskDetail('task-1')).rejects.toThrow('không khớp');
   });
+  it.each(['video', 'music', 'doc', 'archive', 'other'] as const)('consumes the authoritative %s category in snapshots, detail and task events', async (category) => {
+    const { native, listeners } = bridge();
+    const value = makeTask({ category, url: 'https://example.com/guess.mp3', fileName: 'saved.pdf' });
+    native.ListTasks.mockResolvedValueOnce({ tasks: [value], stats: emptyStats });
+    native.GetTaskDetail.mockResolvedValueOnce({ task: value, segments: [] });
+    expect((await api.listTasks()).tasks[0].category).toBe(category);
+    expect((await api.getTaskDetail(value.id)).task.category).toBe(category);
+    const onEvent = vi.fn();
+    const onError = vi.fn();
+    api.subscribe(onEvent, onError);
+    listeners.get('task:added')!(value);
+    listeners.get('task:status')!(value);
+    expect(onEvent.mock.calls.map(([event]) => event.task.category)).toEqual([category, category]);
+    expect(onError).not.toHaveBeenCalled();
+  });
+  it.each([undefined, null, 42, '', 'image', 'Video', '__proto__'])('rejects invalid or missing category %s at every task boundary', async (category) => {
+    const { native, listeners } = bridge();
+    const value = { ...makeTask(), category };
+    native.ListTasks.mockResolvedValueOnce({ tasks: [value], stats: emptyStats });
+    native.GetTaskDetail.mockResolvedValueOnce({ task: value, segments: [] });
+    await expect(api.listTasks()).rejects.toThrow(/Loại tệp|văn bản/);
+    await expect(api.getTaskDetail(value.id)).rejects.toThrow(/Loại tệp|văn bản/);
+    const onEvent = vi.fn();
+    const onError = vi.fn();
+    api.subscribe(onEvent, onError);
+    listeners.get('task:added')!(value);
+    listeners.get('task:status')!(value);
+    expect(onEvent).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledTimes(2);
+  });
   it('decodes segment progress and status events and reports malformed numeric data', () => {
     const { listeners, stop } = bridge();
     const events: BackendEvent[] = [];

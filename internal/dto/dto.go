@@ -4,6 +4,7 @@ type TaskDTO struct {
 	ID        string `json:"id"`
 	URL       string `json:"url"`
 	FileName  string `json:"fileName"`
+	Category  string `json:"category"`
 	SaveDir   string `json:"saveDir"`
 	Status    string `json:"status"`
 	Error     string `json:"error,omitempty"`

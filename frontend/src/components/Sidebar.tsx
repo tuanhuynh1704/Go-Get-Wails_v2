@@ -1,14 +1,20 @@
-import type { Filter } from '../lib/types';
+import { categoryLabels, type Filter } from '../lib/types';
 import { useTaskStore } from '../store/tasks';
 import { Icon, type IconName } from './Icon';
 
 export const filterLabels: Record<Filter, string> = {
   all: 'Tất cả', downloading: 'Đang tải', completed: 'Hoàn tất', failed: 'Thất bại',
+  ...categoryLabels,
 };
 
 const links: { id: Filter; icon: IconName }[] = [
   { id: 'all', icon: 'grid' }, { id: 'downloading', icon: 'download' },
   { id: 'completed', icon: 'check' }, { id: 'failed', icon: 'alert' },
+];
+
+const categories: { id: keyof typeof categoryLabels; icon: IconName }[] = [
+  { id: 'video', icon: 'file' }, { id: 'music', icon: 'file' },
+  { id: 'doc', icon: 'file' }, { id: 'archive', icon: 'folder' }, { id: 'other', icon: 'grid' },
 ];
 
 export function Sidebar({ filter, onFilter }: { filter: Filter; onFilter(filter: Filter): void }) {
@@ -20,6 +26,14 @@ export function Sidebar({ filter, onFilter }: { filter: Filter; onFilter(filter:
       <div className="sidebar-section-label">THƯ VIỆN CỦA BẠN</div>
       <nav className="filter-nav" aria-label="Lọc tác vụ">
         {links.map(({ id, icon }) => (
+          <button key={id} type="button" className={`filter-button ${filter === id ? 'is-selected' : ''}`} aria-current={filter === id ? 'page' : undefined} onClick={() => onFilter(id)}>
+            <Icon name={icon} size={19} /><span>{filterLabels[id]}</span><span className="filter-count">{connection === 'connected' || ids.all.length ? ids[id].length : '—'}</span>
+          </button>
+        ))}
+      </nav>
+      <div className="sidebar-section-label category-section-label">LOẠI TỆP</div>
+      <nav className="filter-nav category-nav" aria-label="Lọc theo loại tệp">
+        {categories.map(({ id, icon }) => (
           <button key={id} type="button" className={`filter-button ${filter === id ? 'is-selected' : ''}`} aria-current={filter === id ? 'page' : undefined} onClick={() => onFilter(id)}>
             <Icon name={icon} size={19} /><span>{filterLabels[id]}</span><span className="filter-count">{connection === 'connected' || ids.all.length ? ids[id].length : '—'}</span>
           </button>

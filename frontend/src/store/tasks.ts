@@ -20,9 +20,10 @@ export interface TaskStore extends TaskData {
 }
 
 function filters(tasks: Record<string, Task>, order: string[]): FilterIDs {
-  const result: FilterIDs = { all: order, downloading: [], completed: [], failed: [] };
+  const result: FilterIDs = { all: order, downloading: [], completed: [], failed: [], video: [], music: [], doc: [], archive: [], other: [] };
   for (const id of order) {
-    const status = tasks[id].status;
+    const { status, category } = tasks[id];
+    result[category].push(id);
     if (!isTerminal(status)) result.downloading.push(id);
     else if (status === 'completed') result.completed.push(id);
     else if (status === 'failed') result.failed.push(id);
@@ -78,7 +79,7 @@ function applyEvent(data: TaskData, event: BackendEvent): TaskData {
   if (merged === current) return data;
   const tasks = { ...data.tasks, [incoming.id]: merged };
   const order = current ? data.order : [...data.order, incoming.id].sort((a, b) => tasks[b].createdAt - tasks[a].createdAt);
-  const membershipChanged = !current || current.status !== merged.status;
+  const membershipChanged = !current || current.status !== merged.status || current.category !== merged.category;
   return { ...data, tasks, order, filterIDs: membershipChanged ? filters(tasks, order) : data.filterIDs };
 }
 
@@ -90,7 +91,7 @@ function snapshotData(snapshot: Snapshot): TaskData {
 }
 
 export const createTaskStore = () => create<TaskStore>((set) => ({
-  tasks: {}, order: [], filterIDs: { all: [], downloading: [], completed: [], failed: [] },
+  tasks: {}, order: [], filterIDs: filters({}, []),
   stats: { globalSpeed: 0, active: 0, queued: 0 },
   connection: 'connecting', connectionError: null, settings: null,
   beginConnection: () => set({ connection: 'connecting', connectionError: null }),

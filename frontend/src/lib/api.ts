@@ -1,6 +1,6 @@
 import * as bindings from '../../wailsjs/go/main/App';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
-import type { AddRequest, BackendAPI, BackendEvent, ProgressItem, Snapshot, Stats, Task, TaskStatus } from './types';
+import type { AddRequest, BackendAPI, BackendEvent, Category, ProgressItem, Snapshot, Stats, Task, TaskStatus } from './types';
 
 type BridgeWindow = Window & {
   go?: { main?: { App?: unknown } };
@@ -35,8 +35,13 @@ function task(value: unknown): Task {
   if (!['queued', 'probing', 'downloading', 'completed', 'failed', 'canceled'].includes(status)) {
     throw new Error('Trạng thái tác vụ không được hỗ trợ.');
   }
+  const category = text(data.category);
+  if (!['video', 'music', 'doc', 'archive', 'other'].includes(category)) {
+    throw new Error('Loại tệp không được hỗ trợ.');
+  }
   return {
     id: text(data.id), url: text(data.url), fileName: text(data.fileName), saveDir: text(data.saveDir),
+    category: category as Category,
     status: status as TaskStatus, error: typeof data.error === 'string' ? data.error : undefined,
     total: number(data.total), done: number(data.done), speed: number(data.speed),
     etaSec: number(data.etaSec), segCount: number(data.segCount), createdAt: number(data.createdAt),

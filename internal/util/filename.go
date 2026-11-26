@@ -22,6 +22,21 @@ func FileName(disposition, rawURL string) string {
 	return "download"
 }
 
+func FileCategory(name string) string {
+	switch strings.ToLower(path.Ext(name)) {
+	case ".mp4", ".mkv", ".avi", ".mov", ".webm", ".wmv", ".m4v", ".flv", ".mpeg", ".mpg":
+		return "video"
+	case ".mp3", ".flac", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".wma":
+		return "music"
+	case ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".csv", ".md", ".rtf", ".odt", ".ods", ".odp", ".epub":
+		return "doc"
+	case ".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".zst":
+		return "archive"
+	default:
+		return "other"
+	}
+}
+
 // SanitizeFileName produces a single portable path component, including on Windows.
 func SanitizeFileName(name string) string {
 	name = strings.ToValidUTF8(name, "_")

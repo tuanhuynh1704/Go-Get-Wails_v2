@@ -971,7 +971,8 @@ Ghi chú: bộ đệm 64 KiB mỗi đoạn cân bằng giữa số syscall và R
 - [ ] Scheduler hẹn giờ
 - [ ] Limiter toàn cục và theo file
 - [ ] Work stealing
-- [ ] Danh mục, lịch sử
+- [x] Phân loại theo đuôi tên file và lọc danh mục trên UI (bổ sung tại `feat/file-categories`; Video, Nhạc, Tài liệu, File nén, Khác)
+- [ ] Lịch sử tải được lưu bền vững
 - [ ] Cài đặt, theme sáng/tối, i18n vi/en
 - [ ] `SingleInstanceLock`, thông báo (beeep)
 

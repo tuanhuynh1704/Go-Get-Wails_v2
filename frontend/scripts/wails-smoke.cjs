@@ -11,6 +11,13 @@ async function main() {
   const url = process.env.GOGET_WAILS_URL || 'http://localhost:34115';
   assert(['localhost', '127.0.0.1'].includes(new URL(url).hostname), 'use a local Wails development instance');
   const tag = `goget-e2e-${crypto.randomBytes(8).toString('hex')}`;
+  const categoryCases = [
+    { suffix: 'MP4', category: 'video', label: 'Video' },
+    { suffix: 'FLAC', category: 'music', label: 'Nhạc' },
+    { suffix: 'PDF', category: 'doc', label: 'Tài liệu' },
+    { suffix: 'tar.gz', category: 'archive', label: 'File nén' },
+    { suffix: 'bin', category: 'other', label: 'Khác' },
+  ].map((item) => ({ ...item, urlName: `${tag}-${item.category}.bin`, fileName: `${tag}-${item.category}.${item.suffix}` }));
   const payload = Buffer.alloc(256 * 1024, 'GoGet Wails bridge\n');
   const segmentedPayload = Buffer.alloc(4 * 1024 * 1024 + 13);
   for (let index = 0; index < segmentedPayload.length; index++) segmentedPayload[index] = (index * 31 + Math.floor(index / 65536)) % 251;
@@ -19,7 +26,8 @@ async function main() {
   const errors = [];
   let browser, downloadDir;
   const server = http.createServer((request, response) => {
-    const name = request.url.split('/').pop();
+    const categoryFixture = categoryCases.find((item) => request.url === `/category/${item.urlName}`);
+    const name = categoryFixture ? categoryFixture.fileName : request.url.split('/').pop();
     seen.push({ url: request.url, method: request.method, range: request.headers.range, ifRange: request.headers['if-range'] });
     if (request.url.startsWith('/error/')) return response.writeHead(404).end('not found');
     if (request.url.startsWith('/range/') || request.url.startsWith('/ignored/')) {
@@ -175,9 +183,28 @@ async function main() {
       if (![complete, segmented, ignored].includes(name)) await assert.rejects(fs.stat(path.join(downloadDir, name)), { code: 'ENOENT' });
       await assert.rejects(fs.stat(path.join(downloadDir, name + '.goget')), { code: 'ENOENT' });
     }
+    categoryCases.forEach((item) => { files.add(item.fileName); files.add(item.urlName); });
+    await add(categoryCases.map((item) => `http://127.0.0.1:${port}/category/${item.urlName}`));
+    const categorizedTasks = await Promise.all(categoryCases.map((item) => waitStatus(item.fileName, 'completed')));
+    for (const [index, item] of categoryCases.entries()) {
+      const task = categorizedTasks[index];
+      assert.equal(task.category, item.category, 'classify the HTTP filename instead of the URL');
+      const content = await fs.readFile(path.join(downloadDir, item.fileName));
+      assert.equal(crypto.createHash('sha256').update(content).digest('hex'), crypto.createHash('sha256').update(payload).digest('hex'));
+      const detail = await page.evaluate((id) => window.go.main.App.GetTaskDetail(id), task.id);
+      assert.equal(detail.task.category, item.category);
+      await page.getByRole('button', { name: new RegExp(`^${item.label}\\s`) }).click();
+      await page.getByRole('article', { name: item.fileName, exact: true }).waitFor();
+      for (const other of categoryCases.filter((entry) => entry.category !== item.category)) {
+        assert.equal(await page.getByRole('article', { name: other.fileName, exact: true }).count(), 0, 'category filter leaked a different file type');
+      }
+      await page.screenshot({ path: path.join(output, `category-${item.category}.png`), fullPage: true });
+      await assert.rejects(fs.stat(path.join(downloadDir, item.fileName + '.goget')), { code: 'ENOENT' });
+    }
+    await page.getByRole('button', { name: /^Tất cả\s/ }).click();
     assert.deepEqual(errors, []);
     await page.screenshot({ path: path.join(output, 'real-bridge.png'), fullPage: true });
-    console.log('PASS: real Go bridge, three parallel ranges, If-Range, detail, ignored-Range fallback, SHA-256, completion/error events, cancel/CancelAll, input/directory rejection, cleanup, no page errors');
+    console.log('PASS: real Go bridge, three parallel ranges, If-Range, detail, ignored-Range fallback, SHA-256, completion/error events, cancel/CancelAll, input/directory rejection, five HTTP-filename categories and UI filters, cleanup, no page errors');
   } finally {
     if (browser) await browser.close();
     server.closeAllConnections();

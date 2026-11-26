@@ -12,6 +12,23 @@ import (
 
 var reservedName = regexp.MustCompile(`(?i)^(CON|PRN|AUX|NUL|CLOCK\$|CONIN\$|CONOUT\$|COM[1-9\x{00b9}\x{00b2}\x{00b3}]|LPT[1-9\x{00b9}\x{00b2}\x{00b3}]) *(\.|$)`)
 
+func TestFileCategory(t *testing.T) {
+	for _, tc := range []struct{ name, want string }{
+		{"movie.MP4", "video"}, {"movie.mkv", "video"}, {"clip.webm", "video"},
+		{"song.mp3", "music"}, {"song.FLAC", "music"}, {"recording.opus", "music"},
+		{"report.PDF", "doc"}, {"report (1).docx", "doc"}, {"data.xlsx", "doc"}, {"notes.txt", "doc"}, {"book.epub", "doc"},
+		{"backup.tar.gz", "archive"}, {"archive.7Z", "archive"}, {"backup.zip", "archive"}, {"backup.tar.xz", "archive"},
+		{"report.pdf.exe", "other"}, {"photo.jpg", "other"}, {"payload.bin", "other"},
+		{"download", "other"}, {".env", "other"}, {"", "other"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := FileCategory(tc.name); got != tc.want {
+				t.Errorf("FileCategory(%q)=%q, want %q", tc.name, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestFileNameMetadataAndURLFallback(t *testing.T) {
 	for _, tc := range []struct{ name, disposition, url, want string }{
 		{"header", `attachment; filename="metadata.bin"`, "https://example.invalid/url.bin", "metadata.bin"},

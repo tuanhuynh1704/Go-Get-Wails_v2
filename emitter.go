@@ -6,6 +6,7 @@ import (
 
 	"github.com/tuanhuynh1704/Go-Get-Wails_v2/internal/downloader"
 	"github.com/tuanhuynh1704/Go-Get-Wails_v2/internal/dto"
+	"github.com/tuanhuynh1704/Go-Get-Wails_v2/internal/util"
 )
 
 // The emitter is independent of the Wails runtime so its batching is testable.
@@ -65,7 +66,8 @@ func (e *emitter) flush() {
 func taskDTO(t downloader.TaskSnapshot) dto.TaskDTO {
 	return dto.TaskDTO{
 		ID: string(t.ID), URL: t.URL, FileName: t.FileName, SaveDir: t.SaveDir,
-		Status: string(t.Status), Error: t.Error, Total: t.Total, Done: t.Done,
+		Category: util.FileCategory(t.FileName),
+		Status:   string(t.Status), Error: t.Error, Total: t.Total, Done: t.Done,
 		Speed: t.Speed, EtaSec: t.EtaSec, SegCount: t.SegCount, Resumable: t.Resumable,
 		Segs: append([]int{}, t.Segs...), CreatedAt: t.CreatedAt.UnixMilli(),
 	}

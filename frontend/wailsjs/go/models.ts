@@ -118,6 +118,7 @@ export namespace dto {
 	    id: string;
 	    url: string;
 	    fileName: string;
+	    category: string;
 	    saveDir: string;
 	    status: string;
 	    error?: string;
@@ -139,6 +140,7 @@ export namespace dto {
 	        this.id = source["id"];
 	        this.url = source["url"];
 	        this.fileName = source["fileName"];
+	        this.category = source["category"];
 	        this.saveDir = source["saveDir"];
 	        this.status = source["status"];
 	        this.error = source["error"];

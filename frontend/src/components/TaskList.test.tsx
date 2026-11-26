@@ -22,8 +22,8 @@ beforeEach(() => {
 });
 
 describe('virtual task list', () => {
-  it('mounts a bounded window from 500 tasks with complete list position metadata', () => {
-    render(<TaskList filter="all" onAdd={vi.fn()} onDetail={vi.fn()} />);
+  it.each(['all', 'doc'] as const)('mounts a bounded window from 500 tasks in %s with complete list position metadata', (filter) => {
+    render(<TaskList filter={filter} onAdd={vi.fn()} onDetail={vi.fn()} />);
     const rows = screen.getAllByRole('listitem');
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.length).toBeLessThan(25);

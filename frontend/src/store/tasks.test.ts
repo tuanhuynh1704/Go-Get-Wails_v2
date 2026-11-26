@@ -53,7 +53,62 @@ describe('task snapshots and events', () => {
   it('keeps canceled tasks visible in All without labeling them failures', () => {
     const store = createTaskStore();
     store.getState().loadSnapshot({ tasks: [makeTask({ status: 'canceled' })], stats: emptyStats }, settings, []);
-    expect(store.getState().filterIDs).toEqual({ all: ['task-1'], downloading: [], completed: [], failed: [] });
+    expect(store.getState().filterIDs).toEqual({ all: ['task-1'], downloading: [], completed: [], failed: [], video: [], music: [], doc: ['task-1'], archive: [], other: [] });
+  });
+  it('indexes each category across all six statuses in newest-first order', () => {
+    const store = createTaskStore();
+    const statuses = ['queued', 'probing', 'downloading', 'completed', 'failed', 'canceled'] as const;
+    const categories = ['video', 'music', 'doc', 'archive', 'other'] as const;
+    const tasks = categories.flatMap((category, index) => statuses.map((status, offset) => makeTask({
+      id: `${category}-${status}`, category, status, createdAt: index * 10 + offset,
+    })));
+    store.getState().loadSnapshot({ tasks, stats: emptyStats }, settings, []);
+    const state = store.getState();
+    for (const category of categories) {
+      expect(state.filterIDs[category]).toEqual([...statuses].reverse().map((status) => `${category}-${status}`));
+    }
+    expect(state.filterIDs.all).toHaveLength(30);
+    expect(state.filterIDs.downloading).toHaveLength(15);
+    expect(state.filterIDs.completed).toHaveLength(5);
+    expect(state.filterIDs.failed).toHaveLength(5);
+  });
+  it.each([50, 75])('reindexes a same-status filename/category correction with done=%i', (done) => {
+    const store = createTaskStore();
+    const initial = makeTask({ fileName: 'download', category: 'other', done: 50, segs: [50] });
+    store.getState().loadSnapshot({ tasks: [initial, makeTask({ id: 'second', category: 'music', createdAt: 200 })], stats: emptyStats }, settings, []);
+    const before = store.getState();
+    store.getState().applyEvent({ type: 'task:status', task: { ...initial, fileName: 'server-selected.MP4', category: 'video', done } });
+    const after = store.getState();
+    expect(after.tasks[initial.id]).toMatchObject({ fileName: 'server-selected.MP4', category: 'video', status: 'downloading', done });
+    expect(after.filterIDs.other).toEqual([]);
+    expect(after.filterIDs.video).toEqual([initial.id]);
+    expect(after.filterIDs.music).toEqual(['second']);
+    expect(after.filterIDs.downloading).toEqual(before.filterIDs.downloading);
+    expect(after.order).toBe(before.order);
+    expect(after.filterIDs).not.toBe(before.filterIDs);
+    const cached = after.filterIDs;
+    store.getState().applyEvent({ type: 'tasks:progress', items: [{ id: initial.id, done: 80, total: 100, speed: 10, etaSec: 2, segs: [80] }] });
+    store.getState().applyEvent({ type: 'stats:update', stats: { active: 2, queued: 0, globalSpeed: 10 } });
+    expect(store.getState().filterIDs).toBe(cached);
+    for (const filter of Object.keys(cached) as (keyof typeof cached)[]) {
+      expect(store.getState().filterIDs[filter]).toBe(cached[filter]);
+    }
+  });
+  it('replays a buffered category correction before installing the snapshot', () => {
+    const store = createTaskStore();
+    store.getState().loadSnapshot({ tasks: [makeTask({ category: 'other' })], stats: emptyStats }, settings, [
+      { type: 'task:status', task: makeTask({ category: 'doc', done: 50 }) },
+    ]);
+    expect(store.getState().filterIDs.doc).toEqual(['task-1']);
+    expect(store.getState().filterIDs.other).toEqual([]);
+  });
+  it('keeps category membership when a stale task update is rejected', () => {
+    const store = createTaskStore();
+    store.getState().loadSnapshot({ tasks: [makeTask({ category: 'video', done: 60 })], stats: emptyStats }, settings, []);
+    const cached = store.getState().filterIDs;
+    store.getState().applyEvent({ type: 'task:status', task: makeTask({ category: 'other', done: 20 }) });
+    expect(store.getState().tasks['task-1'].category).toBe('video');
+    expect(store.getState().filterIDs).toBe(cached);
   });
   it('retains snapshot segments then replays newer segment events without rebuilding filter membership', () => {
     const store = createTaskStore();

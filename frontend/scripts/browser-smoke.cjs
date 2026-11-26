@@ -4,14 +4,23 @@ const { mkdir } = require('node:fs/promises');
 const path = require('node:path');
 const { chromium } = require(process.env.GOGET_PLAYWRIGHT_MODULE || 'playwright');
 
+const categories = [
+  { id: 'doc', label: 'Tài liệu', extension: 'pdf', empty: 'Chưa có tài liệu.' },
+  { id: 'video', label: 'Video', extension: 'mp4', empty: 'Chưa có video.' },
+  { id: 'music', label: 'Nhạc', extension: 'mp3', empty: 'Chưa có tệp nhạc.' },
+  { id: 'archive', label: 'File nén', extension: 'zip', empty: 'Chưa có file nén.' },
+  { id: 'other', label: 'Khác', extension: 'bin', empty: 'Chưa có tệp khác.' },
+];
+
 async function installBridge(page) {
-  await page.addInitScript(() => {
+  await page.addInitScript((categories) => {
     const listeners = new Map();
     const calls = [];
     const emit = (name, payload) => (listeners.get(name) || []).slice().forEach((callback) => callback(payload));
     const makeTask = (index) => ({
-      id: `task-${index}`, url: `https://example.com/files/${index}.pdf`,
-      fileName: `Tài liệu dự án ${index} - ${'báo-cáo-'.repeat(index === 0 ? 20 : 1)}.pdf`,
+      id: `task-${index}`, url: `https://example.com/files/${index}.bin`,
+      fileName: `Tệp dự án ${index} - ${'báo-cáo-'.repeat(index === 0 ? 20 : 1)}.${categories[index % categories.length].extension}`,
+      category: categories[index % categories.length].id,
       saveDir: 'C:\\Downloads\\GoGet', status: ['downloading', 'completed', 'failed', 'queued'][index % 4],
       error: index % 4 === 2 ? 'Máy chủ trả về 404. Không tìm thấy tệp được yêu cầu.' : undefined,
       total: index === 4 ? -1 : 8000, done: index % 4 === 1 ? 8000 : index % 4 === 3 ? 0 : 4000,
@@ -60,7 +69,9 @@ async function installBridge(page) {
         const result = { ids: [], errors: [] };
         request.urls.forEach((url) => {
           if (url.includes('reject')) { result.errors.push({ url, error: 'URL bị từ chối thử nghiệm' }); return; }
-          const task = { ...makeTask(tasks.length), url, id: `added-${tasks.length}`, status: 'queued', createdAt: Date.now(), saveDir: request.saveDir || 'C:\\Downloads\\GoGet', done: 0, total: -1, speed: 0, etaSec: -1, segs: [], segCount: 0, resumable: false };
+          const fileName = new URL(url).pathname.split('/').pop() || 'download';
+          const category = categories.find((item) => fileName.toLowerCase().endsWith(`.${item.extension}`))?.id || 'other';
+          const task = { ...makeTask(tasks.length), url, fileName, category, id: `added-${tasks.length}`, status: 'queued', createdAt: Date.now(), saveDir: request.saveDir || 'C:\\Downloads\\GoGet', done: 0, total: -1, speed: 0, etaSec: -1, segs: [], segCount: 0, resumable: false };
           tasks.push(task);
           result.ids.push(task.id);
           emit('task:added', { ...task });
@@ -75,7 +86,7 @@ async function installBridge(page) {
       },
       CancelAll: async () => { calls.push('cancel-all'); tasks.forEach(cancel); emit('stats:update', stats()); },
     } } };
-  });
+  }, categories);
 }
 
 async function textContrast(page) {
@@ -133,6 +144,18 @@ async function main() {
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Empty state overflows at ${width}px`);
       await page.screenshot({ path: path.join(output, `empty-${width}.png`), fullPage: true });
       contrast.push({ viewport: width, state: 'empty', failures: await textContrast(page) });
+      const categoryNav = page.getByRole('navigation', { name: 'Lọc theo loại tệp' });
+      for (const category of categories) {
+        const button = categoryNav.getByRole('button', { name: new RegExp(`^${category.label}`) });
+        await button.click();
+        await page.getByRole('heading', { name: category.empty, exact: true }).waitFor();
+        assert.equal(await button.getAttribute('aria-current'), 'page');
+        assert.equal(await button.locator('.filter-count').textContent(), '0');
+        assert.equal(await page.locator('.library-count').textContent(), '0');
+        assert(await page.getByRole('button', { name: 'Thêm URL mới', exact: true }).isEnabled());
+        if (category.id === 'doc') await page.screenshot({ path: path.join(output, `category-empty-${width}.png`), fullPage: true });
+      }
+      await page.getByRole('button', { name: /^Tất cả/ }).click();
 
       const trigger = page.getByRole('button', { name: 'Thêm URL', exact: true });
       await trigger.click();
@@ -180,7 +203,7 @@ async function main() {
       await page.waitForFunction(() => document.activeElement?.getAttribute('aria-posinset') === '499');
       await page.keyboard.press('Home');
       await page.waitForFunction(() => document.activeElement?.getAttribute('aria-posinset') === '1');
-      const first = page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: /^Tài liệu dự án 0 -/ }) });
+      const first = page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: /^Tệp dự án 0 -/ }) });
       assert.match(await first.locator('.task-timing').textContent(), /1,5 MB\/s.*ETA 2 phút/);
       assert.equal(await first.locator('.segment-cell').count(), 8);
       assert.equal(await first.getByRole('progressbar', { name: /^Đoạn 2 của/ }).getAttribute('aria-valuenow'), '75');
@@ -208,12 +231,54 @@ async function main() {
       await page.waitForFunction(() => document.querySelector('.task-row .segment-cell:nth-child(2)')?.getAttribute('aria-valuenow') === '100');
       assert.match(await first.locator('.task-timing').textContent(), /2 MB\/s.*ETA 10 giây/);
       assert.equal(await page.evaluate(() => window.__bridge.calls.filter((call) => call.detail).length), 1, 'Progress must not fetch closed detail');
-      await first.getByRole('button', { name: /^Hủy tải/ }).click();
-      await first.getByText('Đã hủy', { exact: true }).waitFor();
-      assert(await first.evaluate((element) => element === document.activeElement), 'Cancel must preserve row focus');
-      const progressBefore = await first.getByRole('progressbar', { name: /^Tiến trình/ }).getAttribute('aria-valuenow');
+      const progressBeforeCorrection = await first.getByRole('progressbar', { name: /^Tiến trình/ }).getAttribute('aria-valuenow');
+      const categoryWindows = {};
+      for (const category of categories) {
+        const button = categoryNav.getByRole('button', { name: new RegExp(`^${category.label}`) });
+        await button.click();
+        await page.getByRole('heading', { name: category.label, exact: true }).waitFor();
+        await page.waitForFunction(() => document.querySelector('[aria-setsize]')?.getAttribute('aria-setsize') === '100');
+        assert.equal(await button.getAttribute('aria-current'), 'page');
+        assert.equal(await button.locator('.filter-count').textContent(), '100');
+        assert.equal(await page.locator('.library-count').textContent(), '100');
+        const files = await page.locator('.task-row h3').allTextContents();
+        assert(files.length > 0 && files.length < 50, `Category ${category.id} must remain virtualized at ${width}px`);
+        assert(files.every((file) => file.endsWith(`.${category.extension}`)), `Category ${category.id} contains the wrong files`);
+        const statuses = await page.locator('.task-row').evaluateAll((rows) => [...new Set(rows.map((row) => row.className.match(/task-(downloading|completed|failed|queued)\b/)[1]))].sort());
+        assert.deepEqual(statuses, ['completed', 'downloading', 'failed', 'queued'], 'Category filters must include every status');
+        assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Category ${category.id} overflows at ${width}px`);
+        categoryWindows[category.id] = files.length;
+        if (category.id === 'doc') {
+          await page.screenshot({ path: path.join(output, `category-doc-${width}.png`), fullPage: true });
+          contrast.push({ viewport: width, state: 'category-doc', failures: await textContrast(page) });
+        }
+      }
+      await categoryNav.getByRole('button', { name: /^Tài liệu/ }).click();
+      const correctedName = 'Tên máy chủ xác nhận - bài trình bày.mp4';
+      await page.evaluate((fileName) => {
+        const task = window.__bridge.tasks[0];
+        Object.assign(task, { fileName, category: 'video', done: 5000 });
+        window.__bridge.emit('task:status', { ...task });
+      }, correctedName);
+      await page.waitForFunction(() => document.querySelector('.library-count')?.textContent === '99');
+      assert.equal(await categoryNav.getByRole('button', { name: /^Tài liệu/ }).locator('.filter-count').textContent(), '99');
+      assert.equal(await page.getByRole('heading', { name: correctedName, exact: true }).count(), 0, 'Corrected file must leave the old category');
+      const videoButton = categoryNav.getByRole('button', { name: /^Video/ });
+      await videoButton.click();
+      const corrected = page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: correctedName, exact: true }) });
+      await corrected.waitFor();
+      assert.equal(await videoButton.locator('.filter-count').textContent(), '101');
+      assert.equal(await page.locator('.library-count').textContent(), '101');
+      assert.equal(await corrected.getByRole('progressbar', { name: /^Tiến trình/ }).getAttribute('aria-valuenow'), progressBeforeCorrection, 'Category correction must preserve progress');
+      await page.screenshot({ path: path.join(output, `category-video-${width}.png`), fullPage: true });
+      contrast.push({ viewport: width, state: 'category-video', failures: await textContrast(page) });
+      await corrected.getByRole('button', { name: /^Hủy tải/ }).click();
+      await corrected.getByText('Đã hủy', { exact: true }).waitFor();
+      assert(await corrected.evaluate((element) => element === document.activeElement), 'Cancel must preserve row focus');
+      assert.equal(await page.locator('.library-count').textContent(), '101', 'Canceled files must remain in their category');
+      const progressBefore = await corrected.getByRole('progressbar', { name: /^Tiến trình/ }).getAttribute('aria-valuenow');
       await page.evaluate(() => window.__bridge.emit('tasks:progress', { items: [{ id: 'task-0', done: 8000, total: 8000, speed: 100, etaSec: 1, segs: Array(8).fill(100) }] }));
-      assert.equal(await first.getByRole('progressbar', { name: /^Tiến trình/ }).getAttribute('aria-valuenow'), progressBefore);
+      assert.equal(await corrected.getByRole('progressbar', { name: /^Tiến trình/ }).getAttribute('aria-valuenow'), progressBefore);
       await page.getByRole('button', { name: /^Hoàn tất/ }).click();
       assert.equal(await page.locator('.task-row:not(.task-completed)').count(), 0);
       await page.getByRole('button', { name: /^Đang tải/ }).click();
@@ -234,7 +299,16 @@ async function main() {
       await page.keyboard.press('Escape');
       await page.getByRole('dialog').waitFor({ state: 'hidden' });
       assert(await page.getByRole('main').evaluate((element) => element === document.activeElement), 'Detail must restore a stable focus target when its trigger leaves the active filter');
-      results.push({ viewport: width, virtualRows: mounted, modalKeyboard: 'pass', segmentInputAndProgress: 'pass', taskDetail: 'pass', removedTriggerFocus: 'pass', speedAndETA: 'pass', actions: 'pass', overflow: 'none' });
+      if (width === 1280) {
+        await page.setViewportSize({ width, height: 640 });
+        const otherButton = categoryNav.getByRole('button', { name: /^Khác/ });
+        await otherButton.scrollIntoViewIfNeeded();
+        await otherButton.click();
+        const bounds = await otherButton.boundingBox();
+        assert(bounds && bounds.y >= 0 && bounds.y + bounds.height <= 640, 'Category controls must remain reachable on a short desktop window');
+        await page.screenshot({ path: path.join(output, 'categories-short-1280.png'), fullPage: true });
+      }
+      results.push({ viewport: width, virtualRows: mounted, categoryVirtualRows: categoryWindows, categoryFiltersAndCounts: 'pass', sameStatusCategoryCorrection: 'pass', modalKeyboard: 'pass', segmentInputAndProgress: 'pass', taskDetail: 'pass', removedTriggerFocus: 'pass', speedAndETA: 'pass', actions: 'pass', overflow: 'none' });
       await context.close();
     }
     const offline = await browser.newPage({ viewport: { width: 1280, height: 900 } });

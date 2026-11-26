@@ -160,6 +160,8 @@ wails build -tags webkit2_41             # Linux dùng webkit2gtk 4.1 (Ubuntu 24
 3. Theo dõi tiến trình, dung lượng, tốc độ và ETA; mở **Chi tiết tải** để xem vị trí byte và trạng thái từng đoạn. Dùng nút hủy của từng file hoặc **Hủy tất cả**. Mặc định tối đa 3 file chạy đồng thời; file nhỏ hoặc máy chủ không hỗ trợ chia đoạn an toàn sẽ dùng một luồng.
 4. File hoàn tất được lưu trong thư mục đã chọn; tên trùng được thêm hậu tố. File tạm `.goget` chỉ trở thành file đích khi đã tải đủ và đồng bộ đĩa.
 
+Phần bổ sung phân loại trên nhánh `feat/file-categories` tự nhóm tác vụ theo đuôi tên file: **Video**, **Nhạc**, **Tài liệu**, **File nén** và **Khác**. Chọn nhóm ở thanh bên để lọc và xem số lượng; nhóm bao gồm mọi trạng thái tải. Phân loại không phân biệt chữ hoa/thường, dùng tên file thực nhận từ HTTP và tự cập nhật khi tên này khác tên đoán từ URL. File không có đuôi hoặc chưa nhận diện được thuộc **Khác**. Đây là phân nhóm trong giao diện; các file vẫn được lưu trong thư mục người dùng đã chọn.
+
 v0.2 chưa lưu hàng đợi hoặc khôi phục sau khi đóng app. Hủy và thoát sẽ xóa phần tải dở; file hoàn tất được giữ lại. Clipboard, tạm dừng/tiếp tục và mở thư mục từ UI thuộc các mốc sau. Chạy `npm run dev` trực tiếp chỉ phục vụ frontend; cần `wails dev` hoặc binary desktop để có backend thật.
 
 Số đoạn là giới hạn tối đa cho mỗi file; đoạn có kích thước mục tiêu tối thiểu 1 MiB. Lõi xác nhận phản hồi Range thực tế và validator của máy chủ trước khi ghép nhiều đoạn. Thiếu validator phù hợp thì dùng một luồng; nếu máy chủ bỏ qua Range giữa chừng, ứng dụng bỏ dữ liệu các đoạn và tải lại toàn bộ bằng một request. Hộp chi tiết cập nhật khi mở, đổi trạng thái hoặc bấm **Làm mới**; tiến trình ở danh sách vẫn cập nhật qua event.

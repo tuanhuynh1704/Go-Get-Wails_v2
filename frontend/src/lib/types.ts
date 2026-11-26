@@ -1,9 +1,11 @@
 export type TaskStatus = 'queued' | 'probing' | 'downloading' | 'completed' | 'failed' | 'canceled';
+export type Category = 'video' | 'music' | 'doc' | 'archive' | 'other';
 
 export interface Task {
   id: string;
   url: string;
   fileName: string;
+  category: Category;
   saveDir: string;
   status: TaskStatus;
   error?: string;
@@ -54,7 +56,11 @@ export interface BackendAPI {
   subscribe(onEvent: (event: BackendEvent) => void, onError: (error: unknown) => void): () => void;
 }
 
-export type Filter = 'all' | 'downloading' | 'completed' | 'failed';
+export type Filter = 'all' | 'downloading' | 'completed' | 'failed' | Category;
+
+export const categoryLabels: Record<Category, string> = {
+  video: 'Video', music: 'Nhạc', doc: 'Tài liệu', archive: 'File nén', other: 'Khác',
+};
 
 export const isTerminal = (status: TaskStatus) =>
   status === 'completed' || status === 'failed' || status === 'canceled';
