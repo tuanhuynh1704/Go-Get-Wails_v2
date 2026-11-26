@@ -4,7 +4,7 @@ Trình quản lý tải file desktop đa nền tảng. Phần lõi tải viết 
 
 Dự án đồng thời là bài thực hành các mẫu đồng thời của Go (worker pool, channel, context, atomic) và cách nối một backend Go với giao diện web hiện đại qua Wails.
 
-> Trạng thái: **đã hoàn thành nền tảng v0.1 và kiểm chứng trên Windows**. Có giao diện Wails + React, tải nhiều URL bằng worker pool, tiến trình qua event và hủy tác vụ. Tải chia đoạn, tốc độ/ETA và khôi phục thuộc các mốc tiếp theo. Xem [báo cáo tiến độ](reports/PROGRESS.md) và [báo cáo v0.1](reports/01-v0.1.md).
+> Trạng thái: **đã hoàn thành nền tảng v0.1; kiểm thử và build CI đạt trên Windows, macOS, Linux và Go tối thiểu 1.22.12**. Có giao diện Wails + React, tải nhiều URL bằng worker pool, tiến trình qua event và hủy tác vụ; E2E backend Wails thật đã kiểm chứng trên Windows. Tải chia đoạn, tốc độ/ETA và khôi phục thuộc các mốc tiếp theo. Xem [báo cáo tiến độ](reports/PROGRESS.md) và [báo cáo v0.1](reports/01-v0.1.md).
 
 ## Vì sao chọn Wails v2
 
