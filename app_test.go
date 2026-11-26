@@ -113,9 +113,13 @@ func TestCanonicalDirectoryRejectsMissingPathAndFiles(t *testing.T) {
 			t.Fatalf("invalid directory accepted: %q", path)
 		}
 	}
+	want, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
 	got, err := canonicalDirectory(filepath.Join(dir, "."))
-	if err != nil || got != dir {
-		t.Fatalf("canonical directory = %q, %v; want %q", got, err, dir)
+	if err != nil || got != want {
+		t.Fatalf("canonical directory = %q, %v; want %q", got, err, want)
 	}
 }
 
