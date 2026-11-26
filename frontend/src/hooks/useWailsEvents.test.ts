@@ -21,7 +21,7 @@ function backend() {
   const api: BackendAPI = {
     listTasks: vi.fn(() => snapshot.promise), getSettings: vi.fn(() => config.promise),
     subscribe: vi.fn((handler, onError) => { emit = handler; fail = onError; return stop; }),
-    addURLs: vi.fn(), cancel: vi.fn(), cancelAll: vi.fn(), pickDirectory: vi.fn(),
+    addURLs: vi.fn(), getTaskDetail: vi.fn(), cancel: vi.fn(), cancelAll: vi.fn(), pickDirectory: vi.fn(),
   };
   return { api, snapshot, config, emit: (event: BackendEvent) => emit(event), fail: (error: unknown) => fail(error), stop };
 }

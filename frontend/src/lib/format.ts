@@ -9,7 +9,7 @@ export function formatBytes(bytes: number): string {
 }
 
 export function formatSpeed(speed: number): string {
-  return `${formatBytes(Number.isFinite(speed) ? Math.max(0, speed) : 0)}/s`;
+  return !Number.isFinite(speed) || speed < 0 ? 'Chưa rõ' : `${formatBytes(speed)}/s`;
 }
 
 export function formatETA(seconds: number): string {
@@ -23,7 +23,7 @@ export function formatETA(seconds: number): string {
 }
 
 export function percent(done: number, total: number): number | undefined {
-  if (!Number.isFinite(total) || total <= 0) return undefined;
+  if (!Number.isFinite(done) || !Number.isFinite(total) || total <= 0) return undefined;
   return Math.min(100, Math.max(0, Math.floor((Math.max(0, done) / total) * 100)));
 }
 

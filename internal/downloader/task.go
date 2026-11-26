@@ -1,4 +1,4 @@
-// Package downloader implements the independent, single-stream v0.1 download core.
+// Package downloader implements the independent, segmented download core.
 package downloader
 
 import (
@@ -29,17 +29,33 @@ type TaskSnapshot struct {
 	Error     string
 	Total     int64
 	Done      int64
+	Speed     int64
+	EtaSec    int64
+	SegCount  int
+	Resumable bool
+	Segs      []int
+	Segments  []SegmentSnapshot
 	CreatedAt time.Time
+}
+
+type SegmentSnapshot struct {
+	Index  int
+	Start  int64
+	End    int64 // Inclusive; -1 for an unknown-length stream.
+	Done   int64
+	Status string
 }
 
 type Config struct {
 	MaxConcurrentFiles int
+	SegmentsPerFile    int
 	Client             *http.Client
 }
 
 type AddRequest struct {
-	URL     string
-	SaveDir string
+	URL      string
+	SaveDir  string
+	Segments int // Zero selects Config.SegmentsPerFile.
 }
 
 type EventKind string
@@ -64,4 +80,10 @@ var (
 
 func terminal(status Status) bool {
 	return status == StatusCompleted || status == StatusFailed || status == StatusCanceled
+}
+
+func cloneSnapshot(s TaskSnapshot) TaskSnapshot {
+	s.Segs = append([]int(nil), s.Segs...)
+	s.Segments = append([]SegmentSnapshot(nil), s.Segments...)
+	return s
 }

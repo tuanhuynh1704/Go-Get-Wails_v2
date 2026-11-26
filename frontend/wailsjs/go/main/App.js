@@ -18,6 +18,10 @@ export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
 
+export function GetTaskDetail(arg1) {
+  return window['go']['main']['App']['GetTaskDetail'](arg1);
+}
+
 export function ListTasks() {
   return window['go']['main']['App']['ListTasks']();
 }

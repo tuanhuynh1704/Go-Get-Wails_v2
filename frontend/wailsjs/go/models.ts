@@ -17,6 +17,7 @@ export namespace dto {
 	export class AddRequest {
 	    urls: string[];
 	    saveDir: string;
+	    segments: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new AddRequest(source);
@@ -26,6 +27,7 @@ export namespace dto {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.urls = source["urls"];
 	        this.saveDir = source["saveDir"];
+	        this.segments = source["segments"];
 	    }
 	}
 	export class AddResult {
@@ -59,6 +61,26 @@ export namespace dto {
 		    }
 		    return a;
 		}
+	}
+	export class SegmentDTO {
+	    index: number;
+	    start: number;
+	    end: number;
+	    done: number;
+	    status: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SegmentDTO(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.index = source["index"];
+	        this.start = source["start"];
+	        this.end = source["end"];
+	        this.done = source["done"];
+	        this.status = source["status"];
+	    }
 	}
 	export class Settings {
 	    downloadDir: string;
@@ -105,6 +127,7 @@ export namespace dto {
 	    etaSec: number;
 	    segCount: number;
 	    resumable: boolean;
+	    segs: number[];
 	    createdAt: number;
 	
 	    static createFrom(source: any = {}) {
@@ -125,6 +148,7 @@ export namespace dto {
 	        this.etaSec = source["etaSec"];
 	        this.segCount = source["segCount"];
 	        this.resumable = source["resumable"];
+	        this.segs = source["segs"];
 	        this.createdAt = source["createdAt"];
 	    }
 	}
@@ -161,6 +185,39 @@ export namespace dto {
 		}
 	}
 	
+	
+	export class TaskDetail {
+	    task: TaskDTO;
+	    segments: SegmentDTO[];
+	
+	    static createFrom(source: any = {}) {
+	        return new TaskDetail(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.task = this.convertValues(source["task"], TaskDTO);
+	        this.segments = this.convertValues(source["segments"], SegmentDTO);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 
 }
 

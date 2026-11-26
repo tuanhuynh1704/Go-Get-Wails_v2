@@ -40,6 +40,7 @@ function task(value: unknown): Task {
     status: status as TaskStatus, error: typeof data.error === 'string' ? data.error : undefined,
     total: number(data.total), done: number(data.done), speed: number(data.speed),
     etaSec: number(data.etaSec), segCount: number(data.segCount), createdAt: number(data.createdAt),
+    segs: Array.isArray(data.segs) ? data.segs.map(number) : [],
     resumable: data.resumable === true,
   };
 }
@@ -69,6 +70,18 @@ export const api: BackendAPI = {
     requireBridge();
     const snapshot = await bindings.ListTasks();
     return { tasks: (snapshot.tasks ?? []).map(task), stats: stats(snapshot.stats) };
+  },
+  async getTaskDetail(id) {
+    requireBridge();
+    const detail = await bindings.GetTaskDetail(id);
+    if (detail.task.id !== id) throw new Error('Chi tiết tác vụ không khớp với yêu cầu.');
+    return {
+      task: task(detail.task),
+      segments: (detail.segments ?? []).map((value: unknown) => {
+        const data = record(value);
+        return { index: number(data.index), start: number(data.start), end: number(data.end), done: number(data.done), status: text(data.status) };
+      }),
+    };
   },
   async cancel(id, deleteFile) { requireBridge(); await bindings.Cancel(id, deleteFile); },
   async cancelAll() { requireBridge(); await bindings.CancelAll(); },

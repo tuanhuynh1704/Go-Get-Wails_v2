@@ -19,34 +19,38 @@ import (
 const queueCapacity = 1024
 
 type runtimeTask struct {
-	snapshot TaskSnapshot
-	ctx      context.Context
-	cancel   context.CancelFunc
-	stop     func() bool
-	finished chan struct{}
-	started  bool
-	lastDone int64
+	snapshot          TaskSnapshot
+	ctx               context.Context
+	cancel            context.CancelFunc
+	stop              func() bool
+	finished          chan struct{}
+	started           bool
+	lastDone          int64
+	lastSample        time.Time
+	speed             float64
+	requestedSegments int
 }
 
 type Manager struct {
-	mu          sync.Mutex
-	ready       *sync.Cond
-	tasks       map[TaskID]*runtimeTask
-	order       []*runtimeTask
-	queue       []*runtimeTask
-	closed      bool
-	root        context.Context
-	cancel      context.CancelFunc
-	client      *http.Client
-	ownedClient bool
-	idleTimeout time.Duration
-	wg          sync.WaitGroup
-	done        chan struct{}
-	events      chan Event
-	eventQueue  []Event
-	eventWake   chan struct{}
-	relayStop   chan struct{}
-	relayDone   chan struct{}
+	mu              sync.Mutex
+	ready           *sync.Cond
+	tasks           map[TaskID]*runtimeTask
+	order           []*runtimeTask
+	queue           []*runtimeTask
+	closed          bool
+	root            context.Context
+	cancel          context.CancelFunc
+	client          *http.Client
+	ownedClient     bool
+	idleTimeout     time.Duration
+	segmentsPerFile int
+	wg              sync.WaitGroup
+	done            chan struct{}
+	events          chan Event
+	eventQueue      []Event
+	eventWake       chan struct{}
+	relayStop       chan struct{}
+	relayDone       chan struct{}
 }
 
 func NewManager(cfg Config) *Manager {
@@ -55,6 +59,12 @@ func NewManager(cfg Config) *Manager {
 	}
 	if cfg.MaxConcurrentFiles > 10 {
 		cfg.MaxConcurrentFiles = 10
+	}
+	if cfg.SegmentsPerFile <= 0 {
+		cfg.SegmentsPerFile = 8
+	}
+	if cfg.SegmentsPerFile > 32 {
+		cfg.SegmentsPerFile = 32
 	}
 	owned := cfg.Client == nil
 	if owned {
@@ -65,7 +75,7 @@ func NewManager(cfg Config) *Manager {
 		transport.ResponseHeaderTimeout = 30 * time.Second
 		transport.IdleConnTimeout = 90 * time.Second
 		transport.MaxIdleConns = 100
-		transport.MaxIdleConnsPerHost = cfg.MaxConcurrentFiles
+		transport.MaxIdleConnsPerHost = cfg.MaxConcurrentFiles * 32
 		cfg.Client = &http.Client{Transport: transport}
 	}
 	client := *cfg.Client
@@ -94,7 +104,8 @@ func NewManager(cfg Config) *Manager {
 	m := &Manager{
 		tasks: make(map[TaskID]*runtimeTask), root: root, cancel: cancel,
 		client: &client, ownedClient: owned, idleTimeout: 30 * time.Second,
-		done: make(chan struct{}), events: make(chan Event), eventWake: make(chan struct{}, 1),
+		segmentsPerFile: cfg.SegmentsPerFile,
+		done:            make(chan struct{}), events: make(chan Event), eventWake: make(chan struct{}, 1),
 		relayStop: make(chan struct{}), relayDone: make(chan struct{}),
 	}
 	m.ready = sync.NewCond(&m.mu)
@@ -113,6 +124,12 @@ func (m *Manager) Add(ctx context.Context, req AddRequest) (TaskID, error) {
 	}
 	if err := ctx.Err(); err != nil {
 		return "", err
+	}
+	if req.Segments < 0 || req.Segments > 32 {
+		return "", fmt.Errorf("segments must be between 1 and 32, or zero for the default")
+	}
+	if req.Segments == 0 {
+		req.Segments = m.segmentsPerFile
 	}
 	u, err := url.Parse(req.URL)
 	if err != nil || u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.Opaque != "" || strings.ContainsAny(req.URL, "\r\n") {
@@ -152,8 +169,9 @@ func (m *Manager) Add(ctx context.Context, req AddRequest) (TaskID, error) {
 	}
 	taskCtx, cancel := context.WithCancel(ctx)
 	t := &runtimeTask{
-		snapshot: TaskSnapshot{ID: id, URL: req.URL, SaveDir: dir, FileName: util.FileName("", req.URL), Status: StatusQueued, Total: -1, CreatedAt: time.Now()},
+		snapshot: TaskSnapshot{ID: id, URL: req.URL, SaveDir: dir, FileName: util.FileName("", req.URL), Status: StatusQueued, Total: -1, EtaSec: -1, CreatedAt: time.Now()},
 		ctx:      taskCtx, cancel: cancel, finished: make(chan struct{}),
+		requestedSegments: req.Segments,
 	}
 	m.tasks[id] = t
 	m.order = append(m.order, t)
@@ -169,7 +187,7 @@ func (m *Manager) Snapshot() []TaskSnapshot {
 	defer m.mu.Unlock()
 	result := make([]TaskSnapshot, 0, len(m.order))
 	for _, t := range m.order {
-		result = append(result, t.snapshot)
+		result = append(result, cloneSnapshot(t.snapshot))
 	}
 	return result
 }
@@ -181,7 +199,7 @@ func (m *Manager) Get(id TaskID) (TaskSnapshot, bool) {
 	if !ok {
 		return TaskSnapshot{}, false
 	}
-	return t.snapshot, true
+	return cloneSnapshot(t.snapshot), true
 }
 
 // Cancel waits for cleanup. deleteFile is retained for the adapter contract;
@@ -272,6 +290,17 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 
 func (m *Manager) finishLocked(t *runtimeTask, status Status, err error) {
 	t.snapshot.Status = status
+	t.snapshot.Speed = 0
+	t.snapshot.EtaSec = -1
+	if status == StatusCompleted {
+		t.snapshot.EtaSec = 0
+	}
+	for i := range t.snapshot.Segments {
+		if t.snapshot.Segments[i].Status == string(StatusQueued) || t.snapshot.Segments[i].Status == string(StatusDownloading) {
+			t.snapshot.Segments[i].Status = string(status)
+		}
+	}
+	refreshSegments(&t.snapshot)
 	if err != nil {
 		t.snapshot.Error = err.Error()
 	}
@@ -284,7 +313,7 @@ func (m *Manager) finishLocked(t *runtimeTask, status Status, err error) {
 }
 
 func (m *Manager) emitLocked(kind EventKind, t *runtimeTask) {
-	m.eventQueue = append(m.eventQueue, Event{Kind: kind, Task: t.snapshot})
+	m.eventQueue = append(m.eventQueue, Event{Kind: kind, Task: cloneSnapshot(t.snapshot)})
 	select {
 	case m.eventWake <- struct{}{}:
 	default:
@@ -326,13 +355,15 @@ func (m *Manager) progress() {
 		select {
 		case <-m.root.Done():
 			return
-		case <-ticker.C:
+		case now := <-ticker.C:
 			m.mu.Lock()
-			// Never accumulate progress behind an unconsumed status backlog.
-			if len(m.eventQueue) == 0 {
-				for _, t := range m.order {
-					if t.snapshot.Status == StatusDownloading && t.snapshot.Done != t.lastDone {
-						t.lastDone = t.snapshot.Done
+			// Sample even with an absent consumer or unchanged byte count: idle
+			// estimates must decay. Never build progress behind a status backlog.
+			canEmit := len(m.eventQueue) == 0
+			for _, t := range m.order {
+				if t.snapshot.Status == StatusDownloading {
+					sampleProgress(t, now)
+					if canEmit {
 						m.emitLocked(EvProgress, t)
 					}
 				}

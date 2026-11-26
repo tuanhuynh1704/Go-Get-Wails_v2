@@ -12,6 +12,7 @@ export interface Task {
   speed: number;
   etaSec: number;
   segCount: number;
+  segs: number[];
   resumable: boolean;
   createdAt: number;
 }
@@ -24,7 +25,9 @@ export interface Settings {
 
 export interface Stats { globalSpeed: number; active: number; queued: number }
 export interface Snapshot { tasks: Task[]; stats: Stats }
-export interface AddRequest { urls: string[]; saveDir: string }
+export interface AddRequest { urls: string[]; saveDir: string; segments: number }
+export interface Segment { index: number; start: number; end: number; done: number; status: string }
+export interface TaskDetail { task: Task; segments: Segment[] }
 export interface AddResult { ids: string[]; errors: { url: string; error: string }[] }
 export interface ProgressItem {
   id: string;
@@ -43,6 +46,7 @@ export type BackendEvent =
 export interface BackendAPI {
   addURLs(request: AddRequest): Promise<AddResult>;
   listTasks(): Promise<Snapshot>;
+  getTaskDetail(id: string): Promise<TaskDetail>;
   cancel(id: string, deleteFile: boolean): Promise<void>;
   cancelAll(): Promise<void>;
   pickDirectory(): Promise<string>;

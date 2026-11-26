@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import App from './App';
 import { api } from './lib/api';
@@ -8,7 +8,7 @@ import type { Snapshot } from './lib/types';
 
 vi.mock('./lib/api', () => ({ api: {
   addURLs: vi.fn(), listTasks: vi.fn(), getSettings: vi.fn(), subscribe: vi.fn(),
-  cancel: vi.fn(), cancelAll: vi.fn(), pickDirectory: vi.fn(),
+  cancel: vi.fn(), cancelAll: vi.fn(), pickDirectory: vi.fn(), getTaskDetail: vi.fn(),
 } }));
 
 beforeEach(() => {
@@ -29,6 +29,29 @@ async function renderReady(snapshot?: Snapshot) {
 }
 
 describe('GoGet application', () => {
+  it('displays real speed, ETA and segment events, and opens detail only on user action', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.getTaskDetail).mockResolvedValue({ task: makeTask({ segs: [100, 20] }), segments: [{ index: 0, start: 0, end: 49, done: 50, status: 'completed' }] });
+    await renderReady({ tasks: [makeTask({ segs: [20, 40], segCount: 2, speed: 1536, etaSec: 61 })], stats: { active: 1, queued: 2, globalSpeed: 1024 } });
+    const row = screen.getByRole('article', { name: 'tài-liệu.pdf' });
+    expect(within(row).getByText(/1,5 KB\/s/)).toHaveTextContent('ETA 2 phút');
+    expect(within(row).getByRole('group', { name: 'Tiến trình 2 đoạn của tài-liệu.pdf' })).toBeInTheDocument();
+    expect(screen.getByRole('contentinfo')).toHaveTextContent('Tổng: 1 KB/s · Đang tải: 1 · Hàng đợi: 2');
+    expect(api.getTaskDetail).not.toHaveBeenCalled();
+    act(() => {
+      useTaskStore.getState().applyEvent({ type: 'tasks:progress', items: [{ id: 'task-1', done: 60, total: 100, speed: 2048, etaSec: 20, segs: [100, 20] }] });
+      useTaskStore.getState().applyEvent({ type: 'stats:update', stats: { active: 1, queued: 2, globalSpeed: 2048 } });
+    });
+    expect(within(row).getByRole('progressbar', { name: 'Đoạn 1 của tài-liệu.pdf' })).toHaveAttribute('aria-valuenow', '100');
+    expect(within(row).getByText(/2 KB\/s/)).toHaveTextContent('ETA 20 giây');
+    expect(screen.getByRole('contentinfo')).toHaveTextContent('Tổng: 2 KB/s');
+    const trigger = within(row).getByRole('button', { name: 'Chi tiết tải tài-liệu.pdf' });
+    await user.click(trigger);
+    expect(await screen.findByRole('group', { name: 'Chi tiết đoạn 1' })).toBeInTheDocument();
+    expect(api.getTaskDetail).toHaveBeenCalledWith('task-1');
+    fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }));
+    expect(trigger).toHaveFocus();
+  });
   it('renders actual loading, connected empty and disconnected states with retry', async () => {
     const stop = vi.fn();
     vi.mocked(api.subscribe).mockReturnValue(stop);
@@ -43,6 +66,19 @@ describe('GoGet application', () => {
     expect(await screen.findByText('Bắt đầu với một đường dẫn.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Hủy tất cả' })).toBeDisabled();
     expect(stop).toHaveBeenCalled();
+  });
+  it('restores a stable focus target if a detail task leaves the active filter while open', async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.getTaskDetail).mockResolvedValue({ task: makeTask(), segments: [] });
+    await renderReady({ tasks: [makeTask()], stats: emptyStats });
+    await user.click(screen.getByRole('button', { name: /^Đang tải/ }));
+    await user.click(screen.getByRole('button', { name: 'Chi tiết tải tài-liệu.pdf' }));
+    await screen.findByText(/Chưa có dữ liệu đoạn tải/);
+    act(() => useTaskStore.getState().applyEvent({ type: 'task:status', task: makeTask({ status: 'completed', done: 100, segs: [100] }) }));
+    await screen.findByText('Hàng đợi đang thảnh thơi.');
+    fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('main')).toHaveFocus());
   });
 
   it('adds from the toolbar and restores focus after native Escape', async () => {

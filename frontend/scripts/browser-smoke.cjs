@@ -14,14 +14,17 @@ async function installBridge(page) {
       fileName: `Tài liệu dự án ${index} - ${'báo-cáo-'.repeat(index === 0 ? 20 : 1)}.pdf`,
       saveDir: 'C:\\Downloads\\GoGet', status: ['downloading', 'completed', 'failed', 'queued'][index % 4],
       error: index % 4 === 2 ? 'Máy chủ trả về 404. Không tìm thấy tệp được yêu cầu.' : undefined,
-      total: index === 0 ? -1 : 1000, done: index % 4 === 1 ? 1000 : 250,
-      speed: 0, etaSec: -1, segCount: 1, resumable: false, createdAt: 1000 - index,
+      total: index === 4 ? -1 : 8000, done: index % 4 === 1 ? 8000 : index % 4 === 3 ? 0 : 4000,
+      speed: index % 4 === 0 ? 1572864 : 0, etaSec: index % 4 === 0 ? 61 : -1,
+      segCount: index % 4 === 3 ? 0 : index === 4 ? 1 : 8,
+      segs: index % 4 === 3 ? [] : index === 4 ? [0] : index % 4 === 1 ? Array(8).fill(100) : [100, 75, 50, 25, 0, 40, 80, 30],
+      resumable: index % 4 !== 3 && index !== 4, createdAt: 1000 - index,
     });
     const tasks = Array.from({ length: Number(new URLSearchParams(location.search).get('tasks') || 0) }, (_, index) => makeTask(index));
     const stats = () => ({
       active: tasks.filter((task) => ['probing', 'downloading'].includes(task.status)).length,
       queued: tasks.filter((task) => task.status === 'queued').length,
-      globalSpeed: 0,
+      globalSpeed: tasks.reduce((sum, task) => sum + task.speed, 0),
     });
     const register = (name, callback) => {
       calls.push(`subscribe:${name}`);
@@ -31,6 +34,8 @@ async function installBridge(page) {
     const cancel = (task) => {
       if (['completed', 'failed', 'canceled'].includes(task.status)) return;
       task.status = 'canceled';
+      task.speed = 0;
+      task.etaSec = -1;
       emit('task:status', { ...task });
     };
     window.runtime = { EventsOn: register, EventsOnMultiple: register };
@@ -41,14 +46,21 @@ async function installBridge(page) {
         if (window.__bridge.failSnapshot) throw new Error('Mất kết nối thử nghiệm');
         return { tasks: tasks.map((task) => ({ ...task })), stats: stats() };
       },
-      GetSettings: async () => ({ downloadDir: 'C:\\Downloads\\GoGet', maxConcurrentFiles: 3, segmentsPerFile: 1 }),
+      GetSettings: async () => ({ downloadDir: 'C:\\Downloads\\GoGet', maxConcurrentFiles: 3, segmentsPerFile: 8 }),
+      GetTaskDetail: async (id) => {
+        calls.push({ detail: id });
+        const task = tasks.find((item) => item.id === id);
+        if (!task) throw new Error('Không tìm thấy tác vụ');
+        return { task: { ...task }, segments: task.segs.map((value, index) => ({ index, start: index * 1000, end: task.total < 0 ? -1 : (index + 1) * 1000 - 1, done: task.total < 0 ? task.done : value * 10, status: value === 100 ? 'completed' : task.status })) };
+      },
       PickDirectory: async () => { calls.push('picker'); return 'D:\\Thu muc da chon'; },
       AddURLs: async (request) => {
         calls.push({ add: request });
+        if (!Number.isInteger(request.segments) || request.segments < 1 || request.segments > 32) throw new Error('Số đoạn không hợp lệ');
         const result = { ids: [], errors: [] };
         request.urls.forEach((url) => {
           if (url.includes('reject')) { result.errors.push({ url, error: 'URL bị từ chối thử nghiệm' }); return; }
-          const task = { ...makeTask(tasks.length), url, id: `added-${tasks.length}`, status: 'queued', createdAt: Date.now(), saveDir: request.saveDir || 'C:\\Downloads\\GoGet' };
+          const task = { ...makeTask(tasks.length), url, id: `added-${tasks.length}`, status: 'queued', createdAt: Date.now(), saveDir: request.saveDir || 'C:\\Downloads\\GoGet', done: 0, total: -1, speed: 0, etaSec: -1, segs: [], segCount: 0, resumable: false };
           tasks.push(task);
           result.ids.push(task.id);
           emit('task:added', { ...task });
@@ -95,7 +107,7 @@ async function textContrast(page) {
 async function main() {
   const browser = await chromium.launch({
     headless: true,
-    ...(process.env.GOGET_BROWSER_PATH ? { executablePath: process.env.GOGET_BROWSER_PATH } : {}),
+    ...((process.env.GOGET_BROWSER_EXECUTABLE || process.env.GOGET_BROWSER_PATH) ? { executablePath: process.env.GOGET_BROWSER_EXECUTABLE || process.env.GOGET_BROWSER_PATH } : {}),
   });
   const base = process.env.GOGET_BASE_URL || 'http://127.0.0.1:5173';
   const output = path.resolve(__dirname, '../coverage/browser');
@@ -133,12 +145,20 @@ async function main() {
       await page.keyboard.press('Shift+Tab');
       assert(await modal.getByRole('button', { name: 'Bắt đầu tải' }).evaluate((element) => element === document.activeElement), 'Native dialog must wrap focus');
       await urls.fill('https://example.com/approved.pdf\nhttps://example.com/reject.pdf');
+      const segments = modal.getByRole('spinbutton', { name: 'Số đoạn', exact: true });
+      assert.equal(await segments.inputValue(), '8', 'Segment default must come from settings');
+      await segments.fill('33');
+      await modal.getByRole('button', { name: 'Bắt đầu tải' }).click();
+      await modal.getByRole('alert').filter({ hasText: 'Số đoạn phải là số nguyên từ 1 đến 32' }).waitFor();
+      assert.equal(await page.evaluate(() => window.__bridge.calls.filter((call) => call.add).length), 0, 'Invalid segment input must not reach the bridge');
+      await segments.fill('32');
       await modal.getByRole('button', { name: 'Chọn thư mục' }).click();
       await page.getByLabel('Thư mục lưu').filter({ hasText: 'D:\\Thu muc da chon' }).waitFor();
       await page.screenshot({ path: path.join(output, `dialog-${width}.png`), fullPage: true });
       contrast.push({ viewport: width, state: 'dialog', failures: await textContrast(page) });
       await modal.getByRole('button', { name: 'Bắt đầu tải' }).click();
       await modal.getByText('Không thể thêm 1 URL').waitFor();
+      assert.equal(await page.evaluate(() => window.__bridge.calls.find((call) => call.add).add.segments), 32);
       assert.equal(await urls.inputValue(), 'https://example.com/reject.pdf');
       await page.keyboard.press('Escape');
       await modal.waitFor({ state: 'hidden' });
@@ -161,19 +181,60 @@ async function main() {
       await page.keyboard.press('Home');
       await page.waitForFunction(() => document.activeElement?.getAttribute('aria-posinset') === '1');
       const first = page.getByRole('listitem').filter({ has: page.getByRole('heading', { name: /^Tài liệu dự án 0 -/ }) });
+      assert.match(await first.locator('.task-timing').textContent(), /1,5 MB\/s.*ETA 2 phút/);
+      assert.equal(await first.locator('.segment-cell').count(), 8);
+      assert.equal(await first.getByRole('progressbar', { name: /^Đoạn 2 của/ }).getAttribute('aria-valuenow'), '75');
+      assert.match(await page.locator('.statusbar').textContent(), /Tổng: 187,5 MB\/s.*Đang tải: 125.*Hàng đợi: 125/);
+      assert.equal(await page.evaluate(() => window.__bridge.calls.filter((call) => call.detail).length), 0, 'Closed detail must not fetch');
+      const detailTrigger = first.getByRole('button', { name: /^Chi tiết tải/ });
+      await detailTrigger.click();
+      const detail = page.getByRole('dialog', { name: 'Chi tiết tải xuống' });
+      await detail.getByRole('group', { name: 'Chi tiết đoạn 8', exact: true }).waitFor();
+      assert.match(await detail.getByRole('group', { name: 'Chi tiết đoạn 1', exact: true }).textContent(), /Byte 0 – 999.*1.000 B \/ 1.000 B.*100%/);
+      assert.equal(await detail.locator('.segment-cell').count(), 8);
+      await page.keyboard.press('Shift+Tab');
+      assert(await detail.getByRole('button', { name: 'Đóng', exact: true }).evaluate((element) => element === document.activeElement));
+      await page.keyboard.press('Tab');
+      assert(await detail.getByRole('button', { name: 'Đóng chi tiết', exact: true }).evaluate((element) => element === document.activeElement));
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Detail overflows at ${width}px`);
+      await page.screenshot({ path: path.join(output, `detail-${width}.png`), fullPage: true });
+      contrast.push({ viewport: width, state: 'detail', failures: await textContrast(page) });
+      await detail.getByRole('button', { name: 'Làm mới', exact: true }).scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(output, `detail-end-${width}.png`), fullPage: true });
+      await page.keyboard.press('Escape');
+      await detail.waitFor({ state: 'hidden' });
+      assert(await detailTrigger.evaluate((element) => element === document.activeElement), 'Detail must return focus');
+      await page.evaluate(() => window.__bridge.emit('tasks:progress', { items: [{ id: 'task-0', done: 5000, total: 8000, speed: 2097152, etaSec: 10, segs: [100, 100, 80, 50, 10, 50, 80, 30] }] }));
+      await page.waitForFunction(() => document.querySelector('.task-row .segment-cell:nth-child(2)')?.getAttribute('aria-valuenow') === '100');
+      assert.match(await first.locator('.task-timing').textContent(), /2 MB\/s.*ETA 10 giây/);
+      assert.equal(await page.evaluate(() => window.__bridge.calls.filter((call) => call.detail).length), 1, 'Progress must not fetch closed detail');
       await first.getByRole('button', { name: /^Hủy tải/ }).click();
       await first.getByText('Đã hủy', { exact: true }).waitFor();
       assert(await first.evaluate((element) => element === document.activeElement), 'Cancel must preserve row focus');
-      const progressBefore = await first.getByRole('progressbar').getAttribute('aria-valuenow');
-      await page.evaluate(() => window.__bridge.emit('tasks:progress', { items: [{ id: 'task-0', done: 999, total: 1000, speed: 100, etaSec: 1, segs: [] }] }));
-      assert.equal(await first.getByRole('progressbar').getAttribute('aria-valuenow'), progressBefore);
+      const progressBefore = await first.getByRole('progressbar', { name: /^Tiến trình/ }).getAttribute('aria-valuenow');
+      await page.evaluate(() => window.__bridge.emit('tasks:progress', { items: [{ id: 'task-0', done: 8000, total: 8000, speed: 100, etaSec: 1, segs: Array(8).fill(100) }] }));
+      assert.equal(await first.getByRole('progressbar', { name: /^Tiến trình/ }).getAttribute('aria-valuenow'), progressBefore);
       await page.getByRole('button', { name: /^Hoàn tất/ }).click();
       assert.equal(await page.locator('.task-row:not(.task-completed)').count(), 0);
       await page.getByRole('button', { name: /^Đang tải/ }).click();
       await page.getByRole('button', { name: 'Hủy tất cả' }).click();
       await page.getByRole('heading', { name: 'Hàng đợi đang thảnh thơi.' }).waitFor();
       assert(await page.getByRole('button', { name: 'Hủy tất cả' }).isDisabled());
-      results.push({ viewport: width, virtualRows: mounted, modalKeyboard: 'pass', actions: 'pass', overflow: 'none' });
+      await page.goto(`${base}/?tasks=1`);
+      await page.getByText('Đã kết nối', { exact: true }).waitFor();
+      await page.getByRole('button', { name: /^Đang tải/ }).click();
+      await page.getByRole('button', { name: /^Chi tiết tải/ }).click();
+      await page.getByRole('dialog', { name: 'Chi tiết tải xuống' }).getByRole('group', { name: 'Chi tiết đoạn 8', exact: true }).waitFor();
+      await page.evaluate(() => {
+        const task = window.__bridge.tasks[0];
+        Object.assign(task, { status: 'completed', done: 8000, speed: 0, etaSec: 0, segs: Array(8).fill(100) });
+        window.__bridge.emit('task:status', { ...task });
+      });
+      await page.getByRole('heading', { name: 'Hàng đợi đang thảnh thơi.' }).waitFor();
+      await page.keyboard.press('Escape');
+      await page.getByRole('dialog').waitFor({ state: 'hidden' });
+      assert(await page.getByRole('main').evaluate((element) => element === document.activeElement), 'Detail must restore a stable focus target when its trigger leaves the active filter');
+      results.push({ viewport: width, virtualRows: mounted, modalKeyboard: 'pass', segmentInputAndProgress: 'pass', taskDetail: 'pass', removedTriggerFocus: 'pass', speedAndETA: 'pass', actions: 'pass', overflow: 'none' });
       await context.close();
     }
     const offline = await browser.newPage({ viewport: { width: 1280, height: 900 } });

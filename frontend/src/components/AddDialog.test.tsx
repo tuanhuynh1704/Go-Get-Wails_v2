@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AddDialog } from './AddDialog';
 import { api } from '../lib/api';
@@ -20,6 +20,33 @@ function mount() {
 }
 
 describe('Add URLs dialog', () => {
+  it.each(['', '0', '33', '1.5', '-1'])('rejects invalid segment count %j before calling the backend', async (value) => {
+    const { input, submit } = mount();
+    fireEvent.change(input, { target: { value: 'https://example.com/a' } });
+    const segments = screen.getByRole('spinbutton', { name: 'Số đoạn' });
+    expect(segments).toHaveValue(8);
+    fireEvent.change(segments, { target: { value } });
+    fireEvent.click(submit);
+    expect(screen.getByRole('alert')).toHaveTextContent('Số đoạn phải là số nguyên từ 1 đến 32');
+    expect(segments).toHaveFocus();
+    expect(segments).toHaveAttribute('aria-invalid', 'true');
+    expect(api.addURLs).not.toHaveBeenCalled();
+  });
+  it.each([1, 32])('sends supported segment boundary %s', async (segments) => {
+    vi.mocked(api.addURLs).mockResolvedValue({ ids: ['first'], errors: [] });
+    const { input, submit } = mount();
+    fireEvent.change(input, { target: { value: 'https://example.com/a' } });
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Số đoạn' }), { target: { value: String(segments) } });
+    fireEvent.click(submit);
+    await waitFor(() => expect(api.addURLs).toHaveBeenCalledWith({ urls: ['https://example.com/a'], saveDir: '', segments }));
+  });
+  it('uses the configured default and falls back to eight for invalid settings', () => {
+    useTaskStore.setState({ settings: { ...settings, segmentsPerFile: 12 } });
+    mount();
+    expect(screen.getByRole('spinbutton', { name: 'Số đoạn' })).toHaveValue(12);
+    act(() => useTaskStore.setState({ settings: { ...settings, segmentsPerFile: 0 } }));
+    expect(screen.getByRole('spinbutton', { name: 'Số đoạn' })).toHaveValue(8);
+  });
   it('focuses the URL field and validates required input, protocols and 100 URL limit', async () => {
     const user = userEvent.setup();
     const { input, submit } = mount();
@@ -44,7 +71,7 @@ describe('Add URLs dialog', () => {
     expect(screen.queryByRole('textbox', { name: 'Thư mục lưu' })).not.toBeInTheDocument();
     fireEvent.change(input, { target: { value: '  https://example.com/a  \r\n\nhttp://example.com/b ' } });
     await user.click(submit);
-    expect(api.addURLs).toHaveBeenCalledWith({ urls: ['https://example.com/a', 'http://example.com/b'], saveDir: '' });
+    expect(api.addURLs).toHaveBeenCalledWith({ urls: ['https://example.com/a', 'http://example.com/b'], saveDir: '', segments: 8 });
     expect(onAdded).toHaveBeenCalledWith(2);
     expect(onClose).toHaveBeenCalledOnce();
   });
@@ -59,7 +86,7 @@ describe('Add URLs dialog', () => {
     await user.click(screen.getByRole('button', { name: 'Chọn thư mục' }));
     fireEvent.change(input, { target: { value: 'https://example.com/a' } });
     await user.click(submit);
-    expect(api.addURLs).toHaveBeenCalledWith({ urls: ['https://example.com/a'], saveDir: 'D:\\Approved' });
+    expect(api.addURLs).toHaveBeenCalledWith({ urls: ['https://example.com/a'], saveDir: 'D:\\Approved', segments: 8 });
   });
 
   it('shows picker and AddURLs failures in the dialog', async () => {
@@ -87,7 +114,7 @@ describe('Add URLs dialog', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('<script>not executable</script>');
     expect(document.querySelector('script')).toBeNull();
     await user.click(submit);
-    expect(api.addURLs).toHaveBeenLastCalledWith({ urls: ['https://example.com/b'], saveDir: '' });
+    expect(api.addURLs).toHaveBeenLastCalledWith({ urls: ['https://example.com/b'], saveDir: '', segments: 8 });
     expect(onClose).toHaveBeenCalledOnce();
   });
 

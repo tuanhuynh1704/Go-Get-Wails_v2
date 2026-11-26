@@ -1,7 +1,6 @@
 package downloader
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,8 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/tuanhuynh1704/Go-Get-Wails_v2/internal/util"
 )
 
 var errIdleTimeout = errors.New("download idle timeout")
@@ -73,86 +70,73 @@ func (m *Manager) download(t *runtimeTask) {
 }
 
 func (m *Manager) transfer(t *runtimeTask) (*ownedFiles, error) {
-	requestCtx, cancel := context.WithCancelCause(t.ctx)
-	defer cancel(nil)
-	// Reset on received bytes, rather than imposing a deadline on the file.
-	idle := time.AfterFunc(m.idleTimeout, func() { cancel(errIdleTimeout) })
-	defer idle.Stop()
-	requestCtx = context.WithValue(requestCtx, activityKey{}, func() { idle.Reset(m.idleTimeout) })
-	req, err := http.NewRequestWithContext(requestCtx, http.MethodGet, t.snapshot.URL, nil)
+	probe, err := m.probe(t)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "GoGet/0.1")
-	req.Header.Set("Accept-Encoding", "identity")
-	resp, err := m.client.Do(req)
-	if err != nil {
-		if errors.Is(context.Cause(requestCtx), errIdleTimeout) {
-			return nil, errIdleTimeout
+	if probe.full != nil {
+		defer probe.full.close()
+	}
+	var response *transferResponse
+	parallel := probe.ranges && segmentCount(probe.total, t.requestedSegments) > 1
+	if !parallel {
+		response = probe.full
+		if response == nil {
+			response, err = m.request(t.ctx, http.MethodGet, probe.url, "", "")
+			if err != nil {
+				return nil, err
+			}
+			defer response.close()
 		}
-		return nil, fmt.Errorf("GET request: %w", err)
+		if err := validateFullResponse(response); err != nil {
+			return nil, err
+		}
+		probe.total = response.ContentLength
+		if response.Header.Get("Content-Disposition") != "" || responseURL(response.Response, probe.url) != probe.url {
+			probe.name = responseFileName(response.Response, probe.url)
+		}
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d %s", resp.StatusCode, http.StatusText(resp.StatusCode))
-	}
-	if encoding := resp.Header.Get("Content-Encoding"); encoding != "" && !strings.EqualFold(encoding, "identity") {
-		return nil, fmt.Errorf("unsupported Content-Encoding: %s", encoding)
-	}
-	idle.Reset(m.idleTimeout)
-	finalURL := t.snapshot.URL
-	if resp.Request != nil && resp.Request.URL != nil {
-		finalURL = resp.Request.URL.String()
-	}
-	name := util.FileName(resp.Header.Get("Content-Disposition"), finalURL)
-	files, err := reserveFiles(t.snapshot.SaveDir, name)
+	files, err := reserveFiles(t.snapshot.SaveDir, probe.name)
 	if err != nil {
 		return nil, err
 	}
-	m.mu.Lock()
-	t.snapshot.FileName = filepath.Base(files.target)
-	t.snapshot.SavePath = files.target
-	t.snapshot.Total = resp.ContentLength
-	t.snapshot.Status = StatusDownloading
-	m.emitLocked(EvStatus, t)
-	m.mu.Unlock()
-	buf := make([]byte, 64*1024)
-	for {
-		if err := requestCtx.Err(); err != nil {
-			if errors.Is(context.Cause(requestCtx), errIdleTimeout) {
-				err = errIdleTimeout
-			}
-			return files, err
+	if parallel {
+		if err := files.file.Truncate(probe.total); err != nil {
+			return files, fmt.Errorf("allocate download: %w", err)
 		}
-		n, readErr := resp.Body.Read(buf)
-		if n > 0 {
-			idle.Reset(m.idleTimeout)
-			written, writeErr := files.file.Write(buf[:n])
-			m.mu.Lock()
-			t.snapshot.Done += int64(written)
-			m.mu.Unlock()
-			if writeErr != nil {
-				return files, fmt.Errorf("write download: %w", writeErr)
+		m.startTransfer(t, files, probe.total, split(probe.total, t.requestedSegments), true)
+		err = m.downloadSegments(t, files.file, probe)
+		if errors.Is(err, errRangeIgnored) && t.ctx.Err() == nil {
+			// downloadSegments joins every worker before returning. Only now may
+			// we destroy old ranges and restart a fresh, coherent representation.
+			if err = files.file.Truncate(0); err != nil {
+				return files, fmt.Errorf("reset download: %w", err)
 			}
-			if written != n {
-				return files, io.ErrShortWrite
+			m.startTransfer(t, files, -1, singleSegment(-1), false)
+			response, err = m.request(t.ctx, http.MethodGet, probe.url, "", "")
+			if err == nil {
+				defer response.close()
+				err = m.downloadSingle(t, files, response)
 			}
 		}
-		if readErr != nil {
-			if errors.Is(context.Cause(requestCtx), errIdleTimeout) {
-				return files, errIdleTimeout
-			}
-			if readErr != io.EOF {
-				return files, fmt.Errorf("read download: %w", readErr)
-			}
-			break
-		}
+	} else {
+		err = m.downloadSingle(t, files, response)
+	}
+	if err != nil {
+		return files, err
 	}
 	m.mu.Lock()
 	done, total := t.snapshot.Done, t.snapshot.Total
 	m.mu.Unlock()
 	if total >= 0 && done != total {
 		return files, fmt.Errorf("incomplete response: wrote %d of %d bytes: %w", done, total, io.ErrUnexpectedEOF)
+	}
+	info, err := files.file.Stat()
+	if err != nil {
+		return files, fmt.Errorf("stat download: %w", err)
+	}
+	if info.Size() != done {
+		return files, fmt.Errorf("incomplete file: size %d, wrote %d bytes", info.Size(), done)
 	}
 	if err := files.file.Sync(); err != nil {
 		return files, fmt.Errorf("sync download: %w", err)
@@ -163,6 +147,19 @@ func (m *Manager) transfer(t *runtimeTask) (*ownedFiles, error) {
 	}
 	files.file = nil
 	return files, nil
+}
+
+func (m *Manager) startTransfer(t *runtimeTask, files *ownedFiles, total int64, segments []SegmentSnapshot, resumable bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t.snapshot.FileName, t.snapshot.SavePath = filepath.Base(files.target), files.target
+	t.snapshot.Total, t.snapshot.Done = total, 0
+	t.snapshot.Speed, t.snapshot.EtaSec = 0, -1
+	t.snapshot.Segments, t.snapshot.Resumable = segments, resumable
+	t.snapshot.Status = StatusDownloading
+	t.lastDone, t.lastSample, t.speed = 0, time.Now(), 0
+	refreshSegments(&t.snapshot)
+	m.emitLocked(EvStatus, t)
 }
 
 type ownedFiles struct {

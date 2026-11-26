@@ -4,7 +4,7 @@ Trình quản lý tải file desktop đa nền tảng. Phần lõi tải viết 
 
 Dự án đồng thời là bài thực hành các mẫu đồng thời của Go (worker pool, channel, context, atomic) và cách nối một backend Go với giao diện web hiện đại qua Wails.
 
-> Trạng thái: **đã hoàn thành nền tảng v0.1; kiểm thử và build CI đạt trên Windows, macOS, Linux và Go tối thiểu 1.22.12**. Có giao diện Wails + React, tải nhiều URL bằng worker pool, tiến trình qua event và hủy tác vụ; E2E backend Wails thật đã kiểm chứng trên Windows. Tải chia đoạn, tốc độ/ETA và khôi phục thuộc các mốc tiếp theo. Xem [báo cáo tiến độ](reports/PROGRESS.md) và [báo cáo v0.1](reports/01-v0.1.md).
+> Trạng thái: **đã triển khai v0.2 và kiểm chứng trên Windows, gồm tải chia đoạn, tốc độ/ETA và chi tiết từng đoạn**. Go race/goleak, Go tối thiểu 1.22.12, frontend và E2E backend Wails thật đã đạt; CI v0.2 sẽ được ghi riêng sau push. Nền v0.1 đã có CI Windows/macOS/Linux đạt. Xem [báo cáo tiến độ](reports/PROGRESS.md), [báo cáo v0.1](reports/01-v0.1.md) và [báo cáo v0.2](reports/02-v0.2.md).
 
 ## Vì sao chọn Wails v2
 
@@ -156,16 +156,18 @@ wails build -tags webkit2_41             # Linux dùng webkit2gtk 4.1 (Ubuntu 24
 ## Cách sử dụng
 
 1. Mở app, bấm **Thêm URL** hoặc `Ctrl/Cmd+N`, dán tối đa 100 URL HTTP(S), mỗi dòng một link.
-2. Dùng thư mục mặc định `~/Downloads/GoGet` hoặc chọn thư mục qua hộp thoại hệ thống; bấm **Bắt đầu tải**.
-3. Theo dõi tiến trình, dung lượng và trạng thái; dùng nút hủy của từng file hoặc **Hủy tất cả**. Mặc định tối đa 3 file chạy đồng thời.
+2. Dùng thư mục mặc định `~/Downloads/GoGet` hoặc chọn thư mục qua hộp thoại hệ thống; chọn **Số đoạn** từ 1 đến 32 (mặc định 8), rồi bấm **Bắt đầu tải**.
+3. Theo dõi tiến trình, dung lượng, tốc độ và ETA; mở **Chi tiết tải** để xem vị trí byte và trạng thái từng đoạn. Dùng nút hủy của từng file hoặc **Hủy tất cả**. Mặc định tối đa 3 file chạy đồng thời; file nhỏ hoặc máy chủ không hỗ trợ chia đoạn an toàn sẽ dùng một luồng.
 4. File hoàn tất được lưu trong thư mục đã chọn; tên trùng được thêm hậu tố. File tạm `.goget` chỉ trở thành file đích khi đã tải đủ và đồng bộ đĩa.
 
-v0.1 chưa lưu hàng đợi hoặc khôi phục sau khi đóng app. Hủy và thoát sẽ xóa phần tải dở; file hoàn tất được giữ lại. Tốc độ, ETA, chia đoạn, clipboard, tạm dừng/tiếp tục và mở thư mục từ UI chưa được cung cấp ở mốc này. Chạy `npm run dev` trực tiếp chỉ phục vụ frontend; cần `wails dev` hoặc binary desktop để có backend thật.
+v0.2 chưa lưu hàng đợi hoặc khôi phục sau khi đóng app. Hủy và thoát sẽ xóa phần tải dở; file hoàn tất được giữ lại. Clipboard, tạm dừng/tiếp tục và mở thư mục từ UI thuộc các mốc sau. Chạy `npm run dev` trực tiếp chỉ phục vụ frontend; cần `wails dev` hoặc binary desktop để có backend thật.
+
+Số đoạn là giới hạn tối đa cho mỗi file; đoạn có kích thước mục tiêu tối thiểu 1 MiB. Lõi xác nhận phản hồi Range thực tế và validator của máy chủ trước khi ghép nhiều đoạn. Thiếu validator phù hợp thì dùng một luồng; nếu máy chủ bỏ qua Range giữa chừng, ứng dụng bỏ dữ liệu các đoạn và tải lại toàn bộ bằng một request. Hộp chi tiết cập nhật khi mở, đổi trạng thái hoặc bấm **Làm mới**; tiến trình ở danh sách vẫn cập nhật qua event.
 
 ## Lộ trình phát triển
 
 - [x] v0.1: khung Wails + React, worker pool, tiến trình qua event, hủy tác vụ
-- [ ] v0.2: tải chia đoạn, tốc độ và ETA, hiển thị từng đoạn
+- [x] v0.2: tải chia đoạn, tốc độ và ETA, hiển thị từng đoạn; kiểm chứng Windows, CI ghi riêng sau push
 - [ ] v0.3: tạm dừng/tiếp tục, lưu trạng thái SQLite, retry
 - [ ] v0.4: clipboard, hẹn giờ, giới hạn tốc độ, kéo thả, cài đặt, theme, i18n
 - [ ] v0.5: HTTP server cục bộ và extension trình duyệt

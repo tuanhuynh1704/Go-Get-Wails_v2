@@ -77,9 +77,29 @@ func TestProgressSegmentsEncodeAsArray(t *testing.T) {
 }
 
 func TestStatsCountsQueuedAndActive(t *testing.T) {
-	tasks := []downloader.TaskSnapshot{{Status: "queued"}, {Status: "probing"}, {Status: "downloading"}, {Status: "completed"}, {Status: "canceled"}, {Status: "failed"}}
-	if stats := statsFor(tasks); stats.Active != 2 || stats.Queued != 1 {
+	tasks := []downloader.TaskSnapshot{{Status: "queued"}, {Status: "probing"}, {Status: "downloading", Speed: 4096}, {Status: "completed", Speed: 42}, {Status: "canceled"}, {Status: "failed"}}
+	if stats := statsFor(tasks); stats.Active != 2 || stats.Queued != 1 || stats.GlobalSpeed != 4096 {
 		t.Fatalf("incorrect stats: %+v", stats)
+	}
+}
+
+func TestEmitterIncludesTransferMetricsAndCopiesSegmentProgress(t *testing.T) {
+	var batches []dto.ProgressBatch
+	e := newEmitter(func(name string, value any) {
+		if name == "tasks:progress" {
+			batches = append(batches, value.(dto.ProgressBatch))
+		}
+	}, func() []downloader.TaskSnapshot { return nil })
+	task := downloader.TaskSnapshot{ID: "segmented", Status: downloader.StatusDownloading, Total: 1000, Done: 500, Speed: 100, EtaSec: 5, SegCount: 2, Segs: []int{75, 25}}
+	e.accept(downloader.Event{Kind: downloader.EvProgress, Task: task})
+	task.Segs[0] = 0
+	e.flush()
+	if len(batches) != 1 || len(batches[0].Items) != 1 {
+		t.Fatalf("unexpected metric batches: %+v", batches)
+	}
+	item := batches[0].Items[0]
+	if item.Speed != 100 || item.EtaSec != 5 || len(item.Segs) != 2 || item.Segs[0] != 75 || item.Segs[1] != 25 {
+		t.Fatalf("metrics lost or segment array aliased: %+v", item)
 	}
 }
 

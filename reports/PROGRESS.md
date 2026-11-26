@@ -6,7 +6,7 @@ Cập nhật: 26/11/2026. Nguồn phạm vi: `README.md` và `DESIGN.md`.
 |---|---|---|
 | 00: Khảo sát, thiết kế và kế hoạch | Đã commit và push `master` tại `9adaddc` | [00-discovery.md](00-discovery.md) |
 | v0.1: Nền tảng Wails + React | Hoàn thành; CI Windows/macOS/Linux và Go 1.22.12 đạt tại `01832d6`, đã merge và push `master` | [01-v0.1.md](01-v0.1.md) |
-| v0.2: Chia đoạn, tốc độ và ETA | Chưa triển khai | HEAD/Range, WriteAt, fallback, SegmentBar, checksum |
+| v0.2: Chia đoạn, tốc độ và ETA | Hoàn thành triển khai và kiểm chứng Windows; CI đa nền tảng sẽ ghi sau push | [02-v0.2.md](02-v0.2.md) |
 | v0.3: Tạm dừng, lưu trạng thái, retry | Chưa triển khai | SQLite, validator, khôi phục và kiểm thử mất kết nối |
 | v0.4: Tiện ích | Chưa triển khai | Clipboard, scheduler, limiter, danh mục, cài đặt, theme, i18n |
 | v0.5: Extension | Chưa triển khai | Loopback API, token, Origin/Host và extension |

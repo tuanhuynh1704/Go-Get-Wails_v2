@@ -13,7 +13,21 @@ type TaskDTO struct {
 	EtaSec    int64  `json:"etaSec"`
 	SegCount  int    `json:"segCount"`
 	Resumable bool   `json:"resumable"`
+	Segs      []int  `json:"segs"`
 	CreatedAt int64  `json:"createdAt"`
+}
+
+type SegmentDTO struct {
+	Index  int    `json:"index"`
+	Start  int64  `json:"start"`
+	End    int64  `json:"end"`
+	Done   int64  `json:"done"`
+	Status string `json:"status"`
+}
+
+type TaskDetail struct {
+	Task     TaskDTO      `json:"task"`
+	Segments []SegmentDTO `json:"segments"`
 }
 
 type ProgressItem struct {
@@ -42,8 +56,9 @@ type Snapshot struct {
 }
 
 type AddRequest struct {
-	URLs    []string `json:"urls"`
-	SaveDir string   `json:"saveDir"`
+	URLs     []string `json:"urls"`
+	SaveDir  string   `json:"saveDir"`
+	Segments int      `json:"segments"`
 }
 
 type AddError struct {

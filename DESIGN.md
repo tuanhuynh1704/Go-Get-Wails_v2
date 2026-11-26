@@ -2,7 +2,9 @@
 
 GoGet là trình quản lý tải file kiểu IDM. Lõi tải viết bằng Go, giao diện viết bằng React + TypeScript, ghép lại bằng **Wails v2**. README.md cho cái nhìn tổng quan; tài liệu này đi sâu vào kiến trúc, giao tiếp Go ↔ frontend, thuật toán tải, đồng thời, lưu trữ, giao diện, đóng gói, kiểm thử và lộ trình.
 
-> Đây là thiết kế tổng thể và lộ trình. Nền tảng v0.1 đã có mã nguồn; các phần chia đoạn, lưu trữ, khôi phục và tiện ích vẫn là thiết kế cho mốc sau. Phạm vi đã kiểm chứng và khác biệt triển khai được ghi tại `reports/`; không coi các mẫu mã trong tài liệu là tính năng đã hoàn thành.
+> Đây là thiết kế tổng thể và lộ trình. Nền tảng v0.1 và tải chia đoạn v0.2 đã có mã nguồn; lưu trữ, khôi phục và tiện ích vẫn là thiết kế cho mốc sau. Phạm vi đã kiểm chứng và khác biệt triển khai được ghi tại `reports/`; không coi các mẫu mã trong tài liệu là tính năng đã hoàn thành.
+
+Mốc **v0.2 đã triển khai tải chia đoạn, Speed/ETA, SegmentBar và `GetTaskDetail`**, kiểm chứng tại máy Windows theo [báo cáo v0.2](reports/02-v0.2.md). Số đoạn tối đa mặc định 8, chọn 1-32; chỉ tải song song khi xác nhận 206 và validator phù hợp. Thiếu validator mạnh hoặc máy chủ bỏ qua Range thì dùng một luồng; Last-Modified chỉ được dùng khi không có ETag và Date mới hơn ít nhất 60 giây. Resume, retry và lưu trạng thái vẫn thuộc các mốc sau.
 
 ---
 
@@ -951,11 +953,11 @@ Ghi chú: bộ đệm 64 KiB mỗi đoạn cân bằng giữa số syscall và R
 - [x] Frontend: store, `useWailsEvents`, `TaskList`, `TaskRow`, `AddDialog`
 
 ### v0.2 Tải chia đoạn
-- [ ] `probe.go`: HEAD, fallback `Range: bytes=0-0`, tên file
-- [ ] `segment.go`: chia đoạn, `downloadSegment`, `WriteAt`, cấp trước file `.goget`, đổi tên khi xong
-- [ ] Progress aggregator, tốc độ làm mượt, ETA
-- [ ] `SegmentBar`, `GetTaskDetail`
-- [ ] Test `httptest` + SHA-256
+- [x] `probe.go`: HEAD, fallback `Range: bytes=0-0`, tên file
+- [x] `segment.go`: chia đoạn, `downloadSegment`, `WriteAt`, cấp trước file `.goget`, đổi tên khi xong
+- [x] Progress aggregator, tốc độ làm mượt, ETA
+- [x] `SegmentBar`, `GetTaskDetail`
+- [x] Test `httptest` + SHA-256
 
 ### v0.3 Tạm dừng và khôi phục
 - [ ] Lược đồ SQLite, di trú, persist ticker

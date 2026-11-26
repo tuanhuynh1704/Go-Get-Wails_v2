@@ -41,7 +41,7 @@ func (e *emitter) accept(event downloader.Event) {
 	t := taskDTO(event.Task)
 	switch event.Kind {
 	case downloader.EvProgress:
-		e.pending[t.ID] = dto.ProgressItem{ID: t.ID, Done: t.Done, Total: t.Total, Speed: t.Speed, EtaSec: t.EtaSec, Segs: []int{}}
+		e.pending[t.ID] = dto.ProgressItem{ID: t.ID, Done: t.Done, Total: t.Total, Speed: t.Speed, EtaSec: t.EtaSec, Segs: t.Segs}
 	case downloader.EvAdded:
 		e.emit("task:added", t)
 	case downloader.EvStatus:
@@ -66,7 +66,8 @@ func taskDTO(t downloader.TaskSnapshot) dto.TaskDTO {
 	return dto.TaskDTO{
 		ID: string(t.ID), URL: t.URL, FileName: t.FileName, SaveDir: t.SaveDir,
 		Status: string(t.Status), Error: t.Error, Total: t.Total, Done: t.Done,
-		EtaSec: -1, SegCount: 1, CreatedAt: t.CreatedAt.UnixMilli(),
+		Speed: t.Speed, EtaSec: t.EtaSec, SegCount: t.SegCount, Resumable: t.Resumable,
+		Segs: append([]int{}, t.Segs...), CreatedAt: t.CreatedAt.UnixMilli(),
 	}
 }
 
@@ -78,6 +79,7 @@ func statsFor(tasks []downloader.TaskSnapshot) dto.Stats {
 			stats.Queued++
 		case "probing", "downloading":
 			stats.Active++
+			stats.GlobalSpeed += t.Speed
 		}
 	}
 	return stats

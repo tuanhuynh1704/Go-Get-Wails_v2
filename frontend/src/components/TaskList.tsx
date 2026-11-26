@@ -16,7 +16,7 @@ function EmptyIllustration() {
   return <div className="empty-art" aria-hidden="true"><span className="empty-orbit orbit-one" /><span className="empty-orbit orbit-two" /><span className="art-spark spark-one" /><span className="art-spark spark-two" /><div className="empty-file"><span /><span /><span /></div><div className="empty-tray"><Icon name="download" size={37} /></div><span className="art-check"><Icon name="check" size={13} /></span></div>;
 }
 
-export function TaskList({ filter, onAdd }: { filter: Filter; onAdd(): void }) {
+export function TaskList({ filter, onAdd, onDetail }: { filter: Filter; onAdd(): void; onDetail(id: string): void }) {
   const ids = useTaskStore((state) => state.filterIDs[filter]);
   const connection = useTaskStore((state) => state.connection);
   const scroll = useRef<HTMLDivElement>(null);
@@ -33,7 +33,7 @@ export function TaskList({ filter, onAdd }: { filter: Filter; onAdd(): void }) {
   }, [focusedIndex, ids.length]);
   const virtualizer = useVirtualizer({
     count: ids.length, getScrollElement: () => scroll.current, getItemKey,
-    estimateSize: () => 154, overscan: 5, enabled: virtual, rangeExtractor,
+    estimateSize: () => 170, overscan: 5, enabled: virtual, rangeExtractor,
   });
 
   useLayoutEffect(() => {
@@ -69,9 +69,9 @@ export function TaskList({ filter, onAdd }: { filter: Filter; onAdd(): void }) {
   if (ids.length === 0) return <div className="list-state empty-state"><EmptyIllustration /><span className="eyebrow">KHÔNG GIAN CHO ĐIỀU TIẾP THEO</span><h2>{emptyCopy[filter].title}</h2><p className="muted">{emptyCopy[filter].detail}</p><button type="button" className="button button-primary" onClick={onAdd} disabled={connection !== 'connected'}><Icon name="plus" size={18} />Thêm URL{filter === 'all' ? ' đầu tiên' : ' mới'}</button>{filter === 'all' && <div className="empty-steps"><span><b>01</b> Dán đường dẫn</span><span><b>02</b> Chọn thư mục</span><span><b>03</b> Bắt đầu tải</span></div>}</div>;
 
   return <div ref={scroll} className="task-scroll" tabIndex={0} role="region" aria-label="Danh sách tải xuống" aria-describedby="task-keyboard-hint" onKeyDown={navigate} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFocusedID(null); }}>
-    <p id="task-keyboard-hint" className="sr-only">Dùng phím mũi tên lên, xuống để chuyển tác vụ. Home đến đầu, End đến cuối danh sách. Tab đến nút hủy.</p>
+    <p id="task-keyboard-hint" className="sr-only">Dùng phím mũi tên lên, xuống để chuyển tác vụ. Home đến đầu, End đến cuối danh sách. Tab đến nút chi tiết và hủy.</p>
     <div role="list" aria-label="Các tác vụ" className={virtual ? 'virtual-list' : 'task-list'} style={virtual ? { height: virtualizer.getTotalSize() } : undefined}>
-      {virtual ? virtualizer.getVirtualItems().map((item) => <div key={item.key} role="listitem" tabIndex={-1} aria-posinset={item.index + 1} aria-setsize={ids.length} className="virtual-row" data-index={item.index} ref={virtualizer.measureElement} style={{ transform: `translateY(${item.start}px)` }} onFocusCapture={() => setFocusedID(ids[item.index])}><TaskRow id={ids[item.index]} /></div>) : ids.map((id, index) => <div key={id} role="listitem" tabIndex={-1} data-index={index} onFocusCapture={() => setFocusedID(id)}><TaskRow id={id} /></div>)}
+      {virtual ? virtualizer.getVirtualItems().map((item) => <div key={item.key} role="listitem" tabIndex={-1} aria-posinset={item.index + 1} aria-setsize={ids.length} className="virtual-row" data-index={item.index} ref={virtualizer.measureElement} style={{ transform: `translateY(${item.start}px)` }} onFocusCapture={() => setFocusedID(ids[item.index])}><TaskRow id={ids[item.index]} onDetail={onDetail} /></div>) : ids.map((id, index) => <div key={id} role="listitem" tabIndex={-1} data-index={index} onFocusCapture={() => setFocusedID(id)}><TaskRow id={id} onDetail={onDetail} /></div>)}
     </div>
   </div>;
 }

@@ -23,7 +23,7 @@ beforeEach(() => {
 
 describe('virtual task list', () => {
   it('mounts a bounded window from 500 tasks with complete list position metadata', () => {
-    render(<TaskList filter="all" onAdd={vi.fn()} />);
+    render(<TaskList filter="all" onAdd={vi.fn()} onDetail={vi.fn()} />);
     const rows = screen.getAllByRole('listitem');
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.length).toBeLessThan(25);
@@ -33,7 +33,7 @@ describe('virtual task list', () => {
   });
 
   it('reaches unmounted tasks using End, arrows and Home without losing task identity', () => {
-    render(<TaskList filter="all" onAdd={vi.fn()} />);
+    render(<TaskList filter="all" onAdd={vi.fn()} onDetail={vi.fn()} />);
     const region = screen.getByRole('region', { name: 'Danh sách tải xuống' });
     region.focus();
     fireEvent.keyDown(region, { key: 'End' });

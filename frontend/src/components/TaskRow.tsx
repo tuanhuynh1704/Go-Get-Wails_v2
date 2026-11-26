@@ -4,8 +4,9 @@ import { errorMessage, formatBytes, formatETA, formatSpeed, percent, sourceHost 
 import { isTerminal, statusLabels } from '../lib/types';
 import { useTaskStore } from '../store/tasks';
 import { Icon } from './Icon';
+import { SegmentBar } from './SegmentBar';
 
-export const TaskRow = memo(function TaskRow({ id }: { id: string }) {
+export const TaskRow = memo(function TaskRow({ id, onDetail }: { id: string; onDetail(id: string): void }) {
   const task = useTaskStore((state) => state.tasks[id]);
   const connected = useTaskStore((state) => state.connection === 'connected');
   const [canceling, setCanceling] = useState(false);
@@ -39,11 +40,13 @@ export const TaskRow = memo(function TaskRow({ id }: { id: string }) {
           </div>
           <span className="task-percent">{percentage === undefined ? 'Chưa rõ' : `${percentage}%`}</span>
         </div>
-        <div className="task-details"><span>{formatBytes(task.done)}<span className="muted"> / {formatBytes(task.total)}</span></span>{active && <span className="task-timing">{task.speed > 0 ? formatSpeed(task.speed) : 'Chờ dữ liệu tốc độ'}<span className="source-dot">·</span>{formatETA(task.etaSec)}</span>}{task.status === 'canceled' && <span className="muted">Tác vụ đã dừng</span>}</div>
+        <div className="task-details"><span>{formatBytes(task.done)}<span className="muted"> / {formatBytes(task.total)}</span></span>{active && <span className="task-timing">{formatSpeed(task.speed)}<span className="source-dot">·</span>ETA {formatETA(task.etaSec)}</span>}{task.status === 'canceled' && <span className="muted">Tác vụ đã dừng</span>}</div>
+        <SegmentBar segs={task.segs} fileName={fileName} />
         {task.status === 'failed' && <p className="task-error" title={task.error}><Icon name="alert" size={14} /><span>{task.error || 'Không thể hoàn tất tải xuống.'}</span></p>}
         {actionError && <p className="task-error" role="alert">{actionError}</p>}
       </div>
       <div className="task-action">
+        <button type="button" className="icon-button" aria-label={`Chi tiết tải ${fileName}`} title="Chi tiết các đoạn tải" disabled={!connected} onClick={() => onDetail(id)}><Icon name="file" size={17} /></button>
         {active ? <button type="button" className="icon-button cancel-task" disabled={canceling || !connected} onClick={(event) => { event.currentTarget.closest<HTMLElement>('[role="listitem"]')?.focus({ preventScroll: true }); void cancel(); }} aria-label={`Hủy tải ${fileName}`} title="Hủy tác vụ và xóa phần tệp chưa hoàn tất">{canceling ? <span className="spinner" /> : <Icon name="close" size={18} />}</button> : <span className={`terminal-icon terminal-${task.status}`} aria-hidden="true"><Icon name={task.status === 'completed' ? 'check' : task.status === 'failed' ? 'alert' : 'stop'} size={19} /></span>}
       </div>
     </article>

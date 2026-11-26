@@ -20,6 +20,10 @@ func TestCancelRunningCleansTemporaryFilesAndPreservesCompleted(t *testing.T) {
 	for _, deleteFile := range []bool{false, true} {
 		t.Run(fmt.Sprint("delete_", deleteFile), func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodHead {
+					w.WriteHeader(http.StatusMethodNotAllowed)
+					return
+				}
 				if r.URL.Path == "/completed.bin" {
 					_, _ = io.WriteString(w, "keep completed")
 					return
@@ -107,6 +111,10 @@ func TestCancelAllCancelsRunningAndQueuedWithoutStartingQueue(t *testing.T) {
 	entered := make(chan struct{}, workers+20)
 	var hits atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 		hits.Add(1)
 		entered <- struct{}{}
 		_, _ = io.WriteString(w, "partial")
@@ -181,6 +189,10 @@ func TestQueueCapacityRejectsOverflow(t *testing.T) {
 func TestParentContextCancellationCleansRunningAndQueued(t *testing.T) {
 	entered := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 		close(entered)
 		_, _ = io.WriteString(w, "partial")
 		w.(http.Flusher).Flush()
@@ -216,6 +228,10 @@ func TestShutdownIdempotentWithoutEventConsumerAndBlockedHTTP(t *testing.T) {
 		t.Run(fmt.Sprint("body_blocked_", sendHeaders), func(t *testing.T) {
 			entered := make(chan struct{})
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodHead {
+					w.WriteHeader(http.StatusMethodNotAllowed)
+					return
+				}
 				if sendHeaders {
 					_, _ = io.WriteString(w, "partial")
 					w.(http.Flusher).Flush()
@@ -269,6 +285,10 @@ func TestIdleTimeoutFailsAndCleansWithoutConsumer(t *testing.T) {
 	for _, sendHeaders := range []bool{false, true} {
 		t.Run(fmt.Sprint("body_idle_", sendHeaders), func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodHead {
+					w.WriteHeader(http.StatusMethodNotAllowed)
+					return
+				}
 				if sendHeaders {
 					_, _ = io.WriteString(w, "first chunk")
 					w.(http.Flusher).Flush()
@@ -294,6 +314,10 @@ func TestDestinationAppearingDuringTransferIsPreserved(t *testing.T) {
 	var once sync.Once
 	release := func() { once.Do(func() { close(gate) }) }
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 		_, _ = io.WriteString(w, "download start")
 		w.(http.Flusher).Flush()
 		select {
@@ -327,6 +351,9 @@ func TestIdleTimeoutResetsWhileBodyMakesProgress(t *testing.T) {
 	const chunks = 24
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", fmt.Sprint(chunks))
+		if r.Method == http.MethodHead {
+			return
+		}
 		ticker := time.NewTicker(20 * time.Millisecond)
 		defer ticker.Stop()
 		for i := 0; i < chunks; i++ {
@@ -383,6 +410,10 @@ func TestRedirectBodyDrainTracksProgressAndStalls(t *testing.T) {
 		t.Run(fmt.Sprint("stalled_", stall), func(t *testing.T) {
 			var finalHits atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodHead {
+					w.WriteHeader(http.StatusMethodNotAllowed)
+					return
+				}
 				if r.URL.Path == "/final.bin" {
 					finalHits.Add(1)
 					_, _ = io.WriteString(w, "final payload")

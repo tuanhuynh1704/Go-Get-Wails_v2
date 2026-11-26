@@ -10,6 +10,8 @@ export function CancelAll():Promise<void>;
 
 export function GetSettings():Promise<dto.Settings>;
 
+export function GetTaskDetail(arg1:string):Promise<dto.TaskDetail>;
+
 export function ListTasks():Promise<dto.Snapshot>;
 
 export function PickDirectory():Promise<string>;

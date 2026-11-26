@@ -48,9 +48,9 @@ func (a *App) startup(ctx context.Context) {
 		a.startupErr = err
 		return
 	}
-	a.settings = dto.Settings{DownloadDir: dir, MaxConcurrentFiles: 3, SegmentsPerFile: 1}
+	a.settings = dto.Settings{DownloadDir: dir, MaxConcurrentFiles: 3, SegmentsPerFile: 8}
 	a.approved[dir] = true
-	a.mgr = downloader.NewManager(downloader.Config{MaxConcurrentFiles: 3})
+	a.mgr = downloader.NewManager(downloader.Config{MaxConcurrentFiles: 3, SegmentsPerFile: 8})
 	emCtx, stop := context.WithCancel(context.Background())
 	a.stopEmitter, a.emitterDone = stop, make(chan struct{})
 	em := newEmitter(func(name string, data any) { runtime.EventsEmit(ctx, name, data) }, a.mgr.Snapshot)
@@ -90,6 +90,9 @@ func (a *App) AddURLs(req dto.AddRequest) (dto.AddResult, error) {
 	if len(req.URLs) == 0 || len(req.URLs) > 100 {
 		return result, errors.New("E_INPUT: provide between 1 and 100 URLs")
 	}
+	if req.Segments < 0 || req.Segments > 32 {
+		return result, errors.New("E_INPUT: segments must be between 1 and 32, or 0 for the default")
+	}
 	a.mu.RLock()
 	dir := req.SaveDir
 	if dir == "" {
@@ -102,7 +105,7 @@ func (a *App) AddURLs(req dto.AddRequest) (dto.AddResult, error) {
 	}
 	for _, raw := range req.URLs {
 		u := strings.TrimSpace(raw)
-		id, err := mgr.Add(context.Background(), downloader.AddRequest{URL: u, SaveDir: dir})
+		id, err := mgr.Add(context.Background(), downloader.AddRequest{URL: u, SaveDir: dir, Segments: req.Segments})
 		if err != nil {
 			result.Errors = append(result.Errors, dto.AddError{URL: u, Error: err.Error()})
 			continue
@@ -131,6 +134,24 @@ func (a *App) Cancel(id string, deleteFile bool) error {
 		return err
 	}
 	return mgr.Cancel(downloader.TaskID(id), deleteFile)
+}
+
+func (a *App) GetTaskDetail(id string) (dto.TaskDetail, error) {
+	mgr, err := a.manager()
+	if err != nil {
+		return dto.TaskDetail{}, err
+	}
+	t, ok := mgr.Get(downloader.TaskID(id))
+	if !ok {
+		return dto.TaskDetail{}, downloader.ErrNotFound
+	}
+	detail := dto.TaskDetail{Task: taskDTO(t), Segments: make([]dto.SegmentDTO, 0, len(t.Segments))}
+	for _, s := range t.Segments {
+		detail.Segments = append(detail.Segments, dto.SegmentDTO{
+			Index: s.Index, Start: s.Start, End: s.End, Done: s.Done, Status: s.Status,
+		})
+	}
+	return detail, nil
 }
 
 func (a *App) CancelAll() error {
@@ -194,7 +215,7 @@ func (a *App) beforeClose(ctx context.Context) bool {
 	}
 	answer, err := runtime.MessageDialog(ctx, runtime.MessageDialogOptions{
 		Type: runtime.QuestionDialog, Title: "GoGet",
-		Message: "Downloads are still active. Exit and cancel them? v0.1 cannot resume downloads after closing.",
+		Message: "Downloads are still active. Exit and cancel them? v0.2 cannot resume downloads after closing.",
 		Buttons: []string{"Yes", "No"}, DefaultButton: "No", CancelButton: "No",
 	})
 	return err != nil || answer != "Yes"

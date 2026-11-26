@@ -126,6 +126,14 @@ func TestDownloadSHA256KnownUnknownAndEmpty(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			requests := make(chan *http.Request, 1)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodHead {
+					if tc.unknown {
+						w.WriteHeader(http.StatusMethodNotAllowed)
+					} else {
+						w.Header().Set("Content-Length", fmt.Sprint(len(tc.body)))
+					}
+					return
+				}
 				requests <- r.Clone(context.Background())
 				if tc.unknown {
 					w.WriteHeader(http.StatusOK)
@@ -155,7 +163,11 @@ func TestDownloadSHA256KnownUnknownAndEmpty(t *testing.T) {
 			}
 			assertFiles(t, dir, map[string][]byte{"payload.bin": tc.body})
 			r := <-requests
-			if r.Method != http.MethodGet || r.Header.Get("Range") != "" || r.Header.Get("Accept-Encoding") != "identity" || r.UserAgent() != "GoGet/0.1" {
+			wantRange := ""
+			if tc.unknown {
+				wantRange = "bytes=0-0" // A range-ignoring fallback probe is reused.
+			}
+			if r.Method != http.MethodGet || r.Header.Get("Range") != wantRange || r.Header.Get("Accept-Encoding") != "identity" || r.UserAgent() != "GoGet/0.2" {
 				t.Errorf("unexpected single-stream request: %s %v", r.Method, r.Header)
 			}
 		})
@@ -257,6 +269,10 @@ func TestConcurrentFileLimitAndClamp(t *testing.T) {
 			entered := make(chan struct{}, tc.want+3)
 			var active, peak atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodHead {
+					w.Header().Set("Content-Length", "7")
+					return
+				}
 				n := active.Add(1)
 				defer active.Add(-1)
 				for old := peak.Load(); n > old && !peak.CompareAndSwap(old, n); old = peak.Load() {
@@ -464,6 +480,9 @@ func TestEventOrderProgressAndSnapshotIsolation(t *testing.T) {
 	release := func() { once.Do(func() { close(gate) }) }
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", "6")
+		if r.Method == http.MethodHead {
+			return
+		}
 		_, _ = io.WriteString(w, "abc")
 		w.(http.Flusher).Flush()
 		select {

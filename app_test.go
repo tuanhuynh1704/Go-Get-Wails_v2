@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"errors"
@@ -23,7 +24,7 @@ func testApp(t *testing.T) *App {
 	t.Helper()
 	dir := t.TempDir()
 	a := NewApp()
-	a.mgr = downloader.NewManager(downloader.Config{MaxConcurrentFiles: 1})
+	a.mgr = downloader.NewManager(downloader.Config{MaxConcurrentFiles: 1, SegmentsPerFile: 1})
 	a.settings = dto.Settings{DownloadDir: dir, MaxConcurrentFiles: 1, SegmentsPerFile: 1}
 	a.approved[dir] = true
 	t.Cleanup(func() {
@@ -76,6 +77,9 @@ func TestAppNotReadyReturnsErrors(t *testing.T) {
 	if _, err := a.ListTasks(); err == nil {
 		t.Fatal("ListTasks succeeded without startup")
 	}
+	if _, err := a.GetTaskDetail("unknown"); err == nil {
+		t.Fatal("GetTaskDetail succeeded without startup")
+	}
 	if _, err := a.GetSettings(); err == nil {
 		t.Fatal("GetSettings succeeded without startup")
 	}
@@ -90,6 +94,70 @@ func TestAppNotReadyReturnsErrors(t *testing.T) {
 	}
 	if _, err := a.PickDirectory(); err == nil {
 		t.Fatal("PickDirectory succeeded without startup")
+	}
+}
+
+func TestAppRejectsInvalidSegmentCountsBeforeAddingTasks(t *testing.T) {
+	a := testApp(t)
+	for _, segments := range []int{-1, 33} {
+		if _, err := a.AddURLs(dto.AddRequest{URLs: []string{"https://example.com/file"}, Segments: segments}); err == nil || !strings.Contains(err.Error(), "E_INPUT") {
+			t.Fatalf("segments %d: expected E_INPUT, got %v", segments, err)
+		}
+	}
+	if len(a.mgr.Snapshot()) != 0 {
+		t.Fatal("invalid segment count created tasks")
+	}
+	if _, err := a.GetTaskDetail("unknown"); !errors.Is(err, downloader.ErrNotFound) {
+		t.Fatalf("unknown detail = %v", err)
+	}
+}
+
+func TestAppSegmentedDownloadDetail(t *testing.T) {
+	a := testApp(t)
+	payload := bytes.Repeat([]byte("GoGet segmented bridge\n"), 180000)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("ETag", `"bridge-v2"`)
+		http.ServeContent(w, r, "segments.bin", time.Time{}, bytes.NewReader(payload))
+	}))
+	defer server.Close()
+	result, err := a.AddURLs(dto.AddRequest{URLs: []string{server.URL + "/segments.bin"}, Segments: 3})
+	if err != nil || len(result.IDs) != 1 || len(result.Errors) != 0 {
+		t.Fatalf("add segmented task: %+v, %v", result, err)
+	}
+	deadline := time.NewTimer(5 * time.Second)
+	defer deadline.Stop()
+	for {
+		select {
+		case event := <-a.mgr.Events():
+			if event.Task.Status == downloader.StatusFailed {
+				t.Fatalf("segmented bridge failed: %s", event.Task.Error)
+			}
+			if event.Task.Status != downloader.StatusCompleted {
+				continue
+			}
+			detail, err := a.GetTaskDetail(result.IDs[0])
+			if err != nil || detail.Task.SegCount != 3 || len(detail.Segments) != 3 || len(detail.Task.Segs) != 3 {
+				t.Fatalf("unexpected detail: %+v, %v", detail, err)
+			}
+			var cursor, done int64
+			for i, segment := range detail.Segments {
+				if segment.Index != i || segment.Start != cursor || segment.Done != segment.End-segment.Start+1 || detail.Task.Segs[i] != 100 {
+					t.Fatalf("invalid completed segment: %+v", detail)
+				}
+				cursor = segment.End + 1
+				done += segment.Done
+			}
+			if cursor != int64(len(payload)) || done != detail.Task.Done || detail.Task.Speed != 0 || detail.Task.EtaSec != 0 {
+				t.Fatalf("inconsistent completed detail: %+v", detail)
+			}
+			got, err := os.ReadFile(filepath.Join(a.settings.DownloadDir, detail.Task.FileName))
+			if err != nil || sha256.Sum256(got) != sha256.Sum256(payload) {
+				t.Fatalf("segmented bridge checksum mismatch: %v", err)
+			}
+			return
+		case <-deadline.C:
+			t.Fatal("segmented bridge download did not complete")
+		}
 	}
 }
 

@@ -32,17 +32,27 @@ function filters(tasks: Record<string, Task>, order: string[]): FilterIDs {
 
 function mergeTask(current: Task | undefined, incoming: Task): Task {
   if (!current) return isTerminal(incoming.status) ? { ...incoming, speed: 0 } : incoming;
-  // v0.1 has no resume/retry: a terminal state cannot become active again.
+  // v0.2 has no resume/retry: a terminal state cannot become active again.
   if (isTerminal(current.status)) return current;
+  // The only topology change in v0.2 is a fresh single-stream fallback.
+  const fallback = current.segCount > 1 && incoming.segCount === 1;
+  if (current.status === 'downloading' && current.segCount === 1 && incoming.segCount > 1) return current;
   const rank = { queued: 0, probing: 1, downloading: 2, completed: 3, failed: 3, canceled: 3 };
   if (rank[incoming.status] < rank[current.status]) return current;
-  if (incoming.status === current.status && incoming.done < current.done) return current;
+  if (!fallback && incoming.status === current.status && incoming.done < current.done) return current;
   return {
     ...incoming,
-    done: Math.max(current.done, incoming.done),
-    total: incoming.total < 0 && current.total >= 0 ? current.total : incoming.total,
+    done: fallback ? incoming.done : Math.max(current.done, incoming.done),
+    total: fallback ? incoming.total : incoming.total < 0 && current.total >= 0 ? current.total : incoming.total,
+    segs: fallback ? incoming.segs : mergeSegments(current.segs, incoming.segs),
     speed: isTerminal(incoming.status) ? 0 : incoming.speed,
   };
+}
+
+function mergeSegments(current: number[], incoming: number[]): number[] {
+  if (!incoming.length) return current;
+  // Within a fixed split, delayed status snapshots must not erase newer progress.
+  return current.length === incoming.length ? incoming.map((value, index) => Math.max(value, current[index])) : incoming;
 }
 
 function applyEvent(data: TaskData, event: BackendEvent): TaskData {
@@ -52,9 +62,12 @@ function applyEvent(data: TaskData, event: BackendEvent): TaskData {
     for (const item of event.items) {
       const current = tasks[item.id];
       if (!current || isTerminal(current.status) || item.done < current.done) continue;
+      if (current.status === 'downloading' && current.segCount === 1 && item.segs.length > 1) continue;
       tasks[item.id] = {
         ...current, done: item.done, total: item.total < 0 && current.total >= 0 ? current.total : item.total,
         speed: item.speed, etaSec: item.etaSec,
+        segs: mergeSegments(current.segs, item.segs),
+        segCount: item.segs.length || current.segCount,
       };
     }
     return { ...data, tasks };

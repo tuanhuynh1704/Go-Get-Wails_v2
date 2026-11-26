@@ -27,7 +27,7 @@ export function Sidebar({ filter, onFilter }: { filter: Filter; onFilter(filter:
       </nav>
       <div className="sidebar-bottom">
         <div className="sidebar-note"><span className="note-line" /><p>Mọi đường dẫn.<br /><strong>Một điểm đến.</strong></p><Icon name="arrow" size={22} /></div>
-        <div className="sidebar-version"><span>GOGET DESKTOP</span><span>v0.1</span></div>
+        <div className="sidebar-version"><span>GOGET DESKTOP</span><span>v0.2</span></div>
       </div>
     </aside>
   );
